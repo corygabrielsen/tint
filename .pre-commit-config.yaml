@@ -29,6 +29,7 @@ repos:
         entry: shellcheck
         language: system
         types: [shell]
+        exclude: '^test/'
 
       - id: validate-commit-message
         name: Validate commit message (50/72 rule)

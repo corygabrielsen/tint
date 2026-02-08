@@ -7,34 +7,44 @@ _C_DIM := \033[2m
 _C_BOLD := \033[1m
 _C_RST := \033[0m
 
-.PHONY: help lint
-.PHONY: setup install-pre-commit install-shellcheck
-.PHONY: require require-pre-commit require-shellcheck
-.PHONY: doctor doctor-pre-commit doctor-shellcheck
+.PHONY: help lint test
+.PHONY: setup install-pre-commit install-shellcheck install-bats
+.PHONY: require require-pre-commit require-shellcheck require-bats
+.PHONY: doctor doctor-pre-commit doctor-shellcheck doctor-bats
 
 help:
 	@echo "tint - terminal background color picker"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make lint       Run shellcheck on all scripts"
-	@echo "  make setup      Install dev tools (pre-commit, shellcheck)"
+	@echo "  make test       Run tests"
+	@echo "  make setup      Install dev tools (pre-commit, shellcheck, bats)"
 	@echo "  make require    Verify dev tools are installed"
 	@echo "  make doctor     Diagnose dev environment"
 
 lint:
-	@shellcheck scripts/validate-commit-message.sh
+	@shellcheck tint scripts/validate-commit-message.sh
+	@# SC1091: can't follow dynamic source paths (source "$DIR/tint")
+	@# SC2030/SC2031: bats @test blocks run in subshells by design
+	@# SC2314/SC2315: bats negation idiom (! cmd) is intentional
+	@shellcheck --shell=bats \
+		--exclude=SC1091,SC2030,SC2031,SC2314,SC2315 \
+		test/*.bats
+
+test:
+	@bats test/
 
 # ---------------------------------------------------------------------------
 # Dev environment: setup / require / doctor
 # ---------------------------------------------------------------------------
 
-setup: install-pre-commit install-shellcheck
+setup: install-pre-commit install-shellcheck install-bats
 	@echo ""
 	@printf '%b%s%b %s\n' '$(_C_OK)' '✓' '$(_C_RST)' 'Setup complete. Run: make require'
 
-require: require-pre-commit require-shellcheck
+require: require-pre-commit require-shellcheck require-bats
 
-doctor: doctor-pre-commit doctor-shellcheck
+doctor: doctor-pre-commit doctor-shellcheck doctor-bats
 
 # ---------------------------------------------------------------------------
 # pre-commit
@@ -144,4 +154,39 @@ doctor-shellcheck:
 	else \
 		printf '%b  %s%b\n' '$(_C_ERR)' '✗ not found' '$(_C_RST)'; \
 		printf '%b  %s%b\n' '$(_C_DIM)' 'Fix: make install-shellcheck' '$(_C_RST)'; \
+	fi
+
+# ---------------------------------------------------------------------------
+# bats
+# ---------------------------------------------------------------------------
+
+install-bats:
+	@if command -v bats >/dev/null 2>&1; then \
+		printf '%b%s%b %s\n' '$(_C_OK)' '✓' '$(_C_RST)' 'bats already installed'; \
+	elif command -v brew >/dev/null 2>&1; then \
+		echo "Installing bats via brew..."; \
+		brew install bats-core || exit 1; \
+		printf '%b  %s%b %s\n' '$(_C_OK)' '✓' '$(_C_RST)' 'bats installed'; \
+	elif command -v apt-get >/dev/null 2>&1; then \
+		echo "Installing bats via apt..."; \
+		sudo apt-get update && sudo apt-get install -y bats || exit 1; \
+		printf '%b  %s%b %s\n' '$(_C_OK)' '✓' '$(_C_RST)' 'bats installed'; \
+	else \
+		printf '%b%s%b\n' '$(_C_WARN)' 'Warning: Could not install bats automatically' '$(_C_RST)'; \
+		echo "Install manually: https://bats-core.readthedocs.io/en/stable/installation.html"; \
+	fi
+
+require-bats:
+	@command -v bats >/dev/null 2>&1 || \
+		(printf '%b%s%b\n' '$(_C_ERR)' '✗ bats not found. Run: make install-bats' '$(_C_RST)' && exit 1)
+	@printf '%b%s%b %s\n' '$(_C_OK)' '✓' '$(_C_RST)' "$$(bats --version)"
+
+doctor-bats:
+	@echo ""
+	@printf '%b%s%b\n' '$(_C_BOLD)' 'bats' '$(_C_RST)'
+	@if command -v bats >/dev/null 2>&1; then \
+		printf '%b  %s%b %s\n' '$(_C_OK)' '✓' '$(_C_RST)' "$$(bats --version)"; \
+	else \
+		printf '%b  %s%b\n' '$(_C_ERR)' '✗ not found' '$(_C_RST)'; \
+		printf '%b  %s%b\n' '$(_C_DIM)' 'Fix: make install-bats' '$(_C_RST)'; \
 	fi

@@ -1,0 +1,10 @@
+# SC1003: Want to escape a single quote?
+# False positive on OSC escape sequences: \033\\ is a literal ST (String Terminator)
+disable=SC1003
+
+# SC3043: In POSIX sh, 'local' is undefined
+# SC3028: In POSIX sh, RANDOM is undefined
+# tint is #!/bin/sh for portability of non-interactive commands (tint <color>,
+# --list, --reset, --help) but deliberately uses local (de facto standard in
+# dash/ash/bash) and RANDOM for the random color feature.
+disable=SC3043,SC3028

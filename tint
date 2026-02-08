@@ -1,0 +1,430 @@
+#!/bin/sh
+# =============================================================================
+# tint - terminal background color picker
+# https://github.com/corygabrielsen/tint
+# =============================================================================
+#
+# Compatibility:
+#   Interactive picker (no args) requires bash for read -n/-t support.
+#   All other commands work with any POSIX shell (dash, ash, sh):
+#     tint <color>    tint --list    tint --reset    tint --help
+#
+#   Note: We use 'local' throughout. While not in POSIX spec, it's supported by
+#   dash, ash, busybox sh, and every /bin/sh in practical use. See:
+#   https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+#   (Austin Group defect #767 - 'local' is planned for next POSIX revision)
+#
+# Install:
+#   curl -fsSL https://raw.githubusercontent.com/corygabrielsen/tint/master/install.sh | bash
+#
+# Usage:
+#   tint                  Interactive picker with live preview
+#   tint <name|hex>       Set directly (e.g., "dracula", "#282a36")
+#   tint random           Pick a random color
+#   tint --reset          Reset to terminal default
+#   tint --list           List available colors
+#   tint --help           Show help
+#
+# Library usage:
+#   source /path/to/tint
+#   tint_pick "$current"  # Interactive picker (0=selected, 1=cancelled)
+#   tint_set "#282a36"    # Set background
+#   tint_reset            # Reset to default
+#   tint_query            # Query current background
+#
+# Configuration:
+#   TINT_PALETTE_FILE     Custom palette file (one "name:#hex" per line)
+#   TINT_PALETTE          Inline palette override (newline-separated)
+#
+# =============================================================================
+
+TINT_VERSION="0.1.0"
+
+# =============================================================================
+# Palette
+# =============================================================================
+
+_TINT_DEFAULT_PALETTE='
+vscode:#1e1e1e
+dracula:#282a36
+nord:#2e3440
+gruvbox:#282828
+onedark:#282c34
+monokai:#272822
+catppuccin:#1e1e2e
+tokyo:#1a1b26
+solarized:#002b36
+github:#0d1117
+rose-pine:#191724
+night-owl:#011627
+ayu:#0a0e14
+black:#000000
+cobalt:#193549
+darcula:#2b2b2b
+everforest:#2d353b
+forest:#1a2e1a
+horizon:#1c1e26
+kanagawa:#1f1f28
+material:#263238
+midnight:#1a1a2e
+navy:#1b2838
+obsidian:#0e0e10
+oxblood:#2e1a1a
+palenight:#292d3e
+slate:#1e2030
+synthwave:#262335
+ubuntu:#300a24
+'
+
+# See header comment re: 'local' keyword compatibility with POSIX shells.
+_tint_load_palette() {
+    # Priority: TINT_PALETTE env > TINT_PALETTE_FILE > default
+    local palette_source="${_TINT_PALETTE_ENV:-}"
+    # Check exists (-f), readable (-r), and guard with :- for set -u safety
+    # Use || true so cat failure doesn't abort under set -e
+    if [ -z "$palette_source" ] && [ -n "${TINT_PALETTE_FILE:-}" ] && [ -f "${TINT_PALETTE_FILE:-}" ] && [ -r "${TINT_PALETTE_FILE:-}" ]; then
+        palette_source=$(cat "$TINT_PALETTE_FILE") || palette_source=""
+    fi
+    if [ -z "$palette_source" ]; then
+        palette_source="$_TINT_DEFAULT_PALETTE"
+    fi
+
+    # Filter valid palette lines using sed and grep pipeline
+    # 1. Strip inline comments and whitespace
+    # 2. Remove empty lines and comment-only lines
+    # 3. Keep only valid name:#hexcode format
+    # Note: || true prevents exit under set -e if grep finds no matches
+    TINT_PALETTE=$(printf '%s\n' "$palette_source" | \
+        sed 's/ #.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | \
+        grep -v '^$' | \
+        grep -v '^#' | \
+        grep -E '^[a-zA-Z0-9][a-zA-Z0-9_-]*:#[0-9a-fA-F]{6}$' || true)
+}
+
+# Initialize palette
+# Track user's TINT_PALETTE separately from our loaded value to handle
+# re-sourcing correctly: only update the saved user value when TINT_PALETTE
+# has actually changed (user override), not when it matches our last load.
+# Special case: if TINT_PALETTE is truly unset, the user explicitly removed
+# the override — always update, since "unset" and "empty processed output"
+# are otherwise indistinguishable via ${TINT_PALETTE:-}.
+if [ -z "${TINT_PALETTE+set}" ] || [ "${TINT_PALETTE:-}" != "${_TINT_LOADED_PALETTE:-}" ]; then
+    _TINT_USER_PALETTE="${TINT_PALETTE:-}"
+fi
+_TINT_PALETTE_ENV="${_TINT_USER_PALETTE:-}"
+TINT_PALETTE=""
+_tint_load_palette
+_TINT_LOADED_PALETTE="$TINT_PALETTE"
+
+# =============================================================================
+# Palette Functions
+# =============================================================================
+
+# tint_lookup <name> - Look up color by name, print hex
+tint_lookup() {
+    local name="$1"
+    local hex
+    # Use awk for exact string matching - avoids regex metacharacter issues
+    # (e.g., 'd.*' won't match 'dracula', '[' won't cause errors)
+    hex=$(printf '%s\n' "$TINT_PALETTE" | awk -F: -v name="$name" '$1 == name {print $2; exit}')
+    if [ -n "$hex" ]; then
+        printf '%s' "$hex"
+        return 0
+    fi
+    return 1
+}
+
+# tint_resolve <input> - Resolve name/hex/"none" to hex (empty for "none")
+# Returns 0 on success, 1 on failure (safe under set -e)
+tint_resolve() {
+    local input="$1"
+    [ "$input" = "none" ] && return 0
+    printf '%s\n' "$input" | grep -qE '^#[0-9a-fA-F]{6}$' && { printf '%s' "$input"; return 0; }
+    # Guard lookup failure to prevent set -e from aborting caller
+    tint_lookup "$input" || return 1
+}
+
+# tint_list - Print all "name:#hex" entries
+tint_list() {
+    printf '%s\n' "$TINT_PALETTE"
+}
+
+# tint_list_names - Print color names only
+tint_list_names() {
+    printf '%s\n' "$TINT_PALETTE" | cut -d: -f1
+}
+
+# _tint_palette_get <n> - Get nth palette entry (1-indexed)
+_tint_palette_get() {
+    printf '%s\n' "$TINT_PALETTE" | sed -n "${1}p"
+}
+
+# _tint_palette_count - Get number of palette entries
+_tint_palette_count() {
+    # Count non-empty lines. grep -c exits non-zero when no matches,
+    # so we capture output first to avoid || echo appending a second "0"
+    local count
+    count=$(printf '%s\n' "$TINT_PALETTE" | grep -c . 2>/dev/null) || count=0
+    printf '%s' "$count"
+}
+
+# =============================================================================
+# Terminal Functions
+# =============================================================================
+
+# tint_set <hex> - Set terminal background via OSC 11
+#
+# Why >/dev/tty 2>/dev/null?
+#
+# /dev/tty is a "magic" device that refers to the process's controlling terminal.
+# It's not a real file - it's a kernel abstraction. The device node exists in the
+# filesystem (so [ -e /dev/tty ] and [ -w /dev/tty ] return true), but writing to
+# it fails with ENXIO ("No such device or address") when no terminal is attached.
+#
+# This happens in: cron jobs, systemd services, `dash -c '...'`, detached processes.
+# We suppress stderr rather than pre-checking because:
+#   1. [ -w /dev/tty ] tests permission bits, not device connectivity
+#   2. [ -t 0 ] can be true while /dev/tty still fails (edge cases)
+#   3. Silently failing is correct behavior - no terminal means nothing to tint
+#
+# Implementation notes:
+#   - Subshell ( ... ) ensures the redirection error itself is captured
+#   - 2>/dev/null on the subshell catches "No such device or address"
+#   - || true prevents set -e from treating tty absence as fatal
+#   - This pattern works across bash, dash, and other POSIX shells
+#
+tint_set() {
+    ( printf '\033]11;%s\033\\' "$1" >/dev/tty ) 2>/dev/null || true
+}
+
+# tint_reset - Reset to terminal profile default via OSC 111
+# See tint_set for /dev/tty handling explanation.
+tint_reset() {
+    ( printf '\033]111\033\\' >/dev/tty ) 2>/dev/null || true
+}
+
+# tint_query - Query current background, return #rrggbb or fail
+tint_query() {
+    local hex
+    hex=$(_tint_query_raw) || return 1
+    if [ -n "$hex" ]; then
+        printf '%s' "$hex"
+        return 0
+    fi
+    return 1
+}
+
+# Internal: run terminal query in isolated subshell.
+# Uses ( ) instead of { } so trap/stty changes can't leak to caller.
+# All terminal I/O goes through /dev/tty explicitly, so the subshell
+# capture ($(...)) doesn't interfere with stdin/stdout.
+#
+# Timeout: stty `time 2` = 200ms. This is a deliberate tradeoff: long enough
+# for all known local and remote terminals to respond (the response is a single
+# write from the terminal emulator), but short enough that non-responding
+# terminals (e.g. TERM=dumb, serial consoles) don't block for seconds.
+_tint_query_raw() (
+    old_settings=$(stty -g 2>/dev/null </dev/tty) || exit 1
+    stty raw -echo min 0 time 2 </dev/tty 2>/dev/null || {
+        stty "$old_settings" </dev/tty 2>/dev/null
+        exit 1
+    }
+    trap 'stty "$old_settings" </dev/tty 2>/dev/null' EXIT
+
+    printf '\033]11;?\033\\' >/dev/tty
+    response=$(dd bs=64 count=1 2>/dev/null </dev/tty | tr -d '\000')
+
+    # Explicit restore (trap also fires on exit as safety net)
+    stty "$old_settings" </dev/tty 2>/dev/null
+
+    # Extract RGB: rgb:RRRR/GGGG/BBBB -> #RRGGBB (first 2 hex digits each)
+    #
+    # XParseColor allows 1-4 hex digits per component (h|hh|hhh|hhhh), but all known
+    # terminals respond with 4 digits: xterm, VTE, urxvt, kitty, alacritty, foot (since
+    # 2022). The regex requires 2+ digits, which safely handles all real-world responses.
+    # See: https://codeberg.org/dnkl/foot/issues/971 (foot aligned to 4-digit standard)
+    printf '%s' "$response" | sed -n 's/.*rgb:\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*\/\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*\/\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*.*/#\1\2\3/p'
+)
+
+# tint_supports_color - Check if we can reasonably expect terminal color support
+#
+# This is a heuristic, not a guarantee. We check:
+#   1. TERM is not "dumb" (indicates minimal/no capabilities)
+#   2. /dev/tty is writable (we have a controlling terminal)
+#
+# Note: [ -t 1 ] (stdout is a tty) is insufficient - we write to /dev/tty,
+# not stdout. A process can have stdout redirected but still have a
+# controlling terminal, or vice versa.
+#
+# We don't detect terminal multiplexers (tmux/screen) here. OSC 11 may or
+# may not work through them depending on configuration. Users in tmux who
+# want to change the *outer* terminal color need passthrough sequences,
+# which we don't currently support.
+#
+tint_supports_color() {
+    [ "${TERM:-dumb}" != "dumb" ] || return 1
+    # Try opening /dev/tty for writing - this is the definitive check
+    ( printf '' >/dev/tty ) 2>/dev/null || return 1
+    return 0
+}
+
+_tint_usage() {
+    cat <<'EOF'
+tint - terminal background color picker
+
+USAGE
+    tint <name|hex>       Set background directly
+    tint random           Pick a random color
+    tint --reset          Reset to terminal default
+    tint --query          Query current background
+    tint --list           List available colors
+    tint --names          List names only
+    tint --help           Show this help
+    tint --version        Show version
+
+EXAMPLES
+    tint dracula          Set by name
+    tint "#282a36"        Set by hex code
+    tint random           Surprise me
+    tint none             Reset and disable
+    tint --list           Show all available colors
+
+CONFIGURATION
+    Custom palette file:  export TINT_PALETTE_FILE=~/.config/tint/palette.conf
+    Inline palette:       export TINT_PALETTE=$'name1:#hex1\nname2:#hex2'
+
+    Palette format (one per line):
+        colorname:#hexcode
+
+MORE INFO
+    https://github.com/corygabrielsen/tint
+EOF
+}
+
+_tint_main() {
+    # Explicit empty argument is invalid, not interactive mode
+    if [ $# -gt 0 ] && [ -z "$1" ]; then
+        echo "error: color name cannot be empty" >&2
+        exit 1
+    fi
+    # Reject extra arguments — all commands take at most one argument
+    if [ $# -gt 1 ]; then
+        echo "error: unexpected argument: $2" >&2
+        echo "Run 'tint --help' for usage" >&2
+        exit 1
+    fi
+    case "${1:-}" in
+        "")
+            _tint_usage
+            ;;
+        -h|--help)
+            _tint_usage
+            ;;
+        -v|--version)
+            echo "tint $TINT_VERSION"
+            ;;
+        -l|--list)
+            tint_list
+            ;;
+        -n|--names)
+            tint_list_names
+            ;;
+        -r|--reset)
+            tint_reset
+            echo "Reset to terminal default"
+            ;;
+        -q|--query)
+            tint_query || { echo "Query failed" >&2; exit 1; }
+            echo
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            echo "Run 'tint --help' for usage" >&2
+            exit 1
+            ;;
+        random)
+            local count entry hex name idx
+            count=$(_tint_palette_count)
+            if [ "$count" -eq 0 ]; then
+                echo "No colors in palette" >&2
+                exit 1
+            fi
+            # Build seed in awk to avoid shell arithmetic octal pitfalls.
+            # date +%N output can have leading zeros (octal in shell) or be
+            # non-numeric on BSD/macOS. awk handles all of these safely.
+            idx=$(awk -v max="$count" -v pid="$$" -v sec="$(date +%s)" \
+                      -v nsec="$(date +%N 2>/dev/null || echo 0)" \
+                      -v rnd="${RANDOM:-0}" \
+                'BEGIN{ srand(pid * sec + rnd + (nsec+0)); print int(rand()*max)+1 }')
+            entry=$(_tint_palette_get "$idx")
+            name="${entry%%:*}"
+            hex="${entry#*:}"
+            tint_set "$hex"
+            echo "$name $hex"
+            ;;
+        *)
+            # local is de facto standard (see line 76)
+            # shellcheck disable=SC3043
+            local hex
+            if hex=$(tint_resolve "$1"); then
+                if [ -n "$hex" ]; then
+                    tint_set "$hex"
+                    echo "$hex"
+                else
+                    tint_reset
+                    echo "Reset to terminal default"
+                fi
+            else
+                echo "Unknown color: $1" >&2
+                echo "Run 'tint --list' for available colors" >&2
+                exit 1
+            fi
+            ;;
+    esac
+}
+
+# Run CLI if executed directly (not sourced)
+# When invoked as "bash tint" or "sh tint", $0 is the script path, not the shell.
+# shellcheck disable=SC3028,SC3054
+_tint_is_main() {
+    # Bash: BASH_SOURCE[0] is array syntax that only works under bash.
+    # Test array access in a subshell first — if BASH_VERSION leaks via
+    # environment into dash/sh, the subshell catches the fatal "Bad
+    # substitution" error without killing the parent script.
+    if (eval '[ "${BASH_SOURCE[0]+_}" = _ ]') 2>/dev/null; then
+        [ "${BASH_SOURCE[0]}" = "$0" ]
+        return
+    fi
+    # Zsh: when executed, context is "toplevel" or "toplevel:shfunc"
+    # When sourced, context contains ":file:"
+    if [ -n "${ZSH_EVAL_CONTEXT:-}" ]; then
+        case "$ZSH_EVAL_CONTEXT" in
+            *:file:*|*:file) return 1 ;;  # Sourced
+            toplevel*) return 0 ;;        # Executed
+            *) return 1 ;;
+        esac
+    fi
+    # POSIX fallback: check if $0 actually IS this script.
+    # When executed (even via symlink/rename): $0 resolves to tint, which
+    # contains our unique header URL. When sourced from another script: $0
+    # is the calling script or shell, which won't have our marker.
+    # Fast path: known shell names are definitely sourced.
+    case "${0##*/}" in
+        sh|dash|ash|bash|zsh|ksh|csh|tcsh|fish|-*) return 1 ;;
+    esac
+    # For other $0 values (symlinks, renames, or sourcing from scripts),
+    # check if $0 contains our unique header URL (won't appear in caller scripts).
+    # Note: a caller that includes this exact URL line would be a false positive,
+    # but this is the best available POSIX heuristic (no reliable sourced-vs-exec
+    # detection exists in POSIX sh). The anchored full URL makes collisions
+    # negligible in practice.
+    if [ -f "$0" ] && grep -qm1 '^# https://github.com/corygabrielsen/tint$' "$0" 2>/dev/null; then
+        return 0  # Executed (tint, symlink, renamed copy)
+    fi
+    return 1  # Sourced from another script
+}
+
+if _tint_is_main; then
+    set -eu
+    _tint_main "$@"
+fi
