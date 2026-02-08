@@ -1,0 +1,22 @@
+# Pre-commit hooks configuration
+# See https://pre-commit.com for more information
+#
+# Install hooks: pre-commit install
+# Run manually:  pre-commit run --all-files
+# Skip hooks:    git commit --no-verify
+
+repos:
+  # Standard hooks from pre-commit
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-case-conflict
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
