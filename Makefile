@@ -23,7 +23,7 @@ help:
 	@echo "  make doctor     Diagnose dev environment"
 
 lint:
-	@shellcheck tint scripts/validate-commit-message.sh
+	@shellcheck tint scripts/validate-commit-message.sh scripts/release.sh
 	@# SC1091: can't follow dynamic source paths (source "$DIR/tint")
 	@# SC2030/SC2031: bats @test blocks run in subshells by design
 	@# SC2314/SC2315: bats negation idiom (! cmd) is intentional
