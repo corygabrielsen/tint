@@ -5,6 +5,12 @@ set -euo pipefail
 version=$(grep '^TINT_VERSION=' tint | cut -d'"' -f2)
 tag="v$version"
 
+# Skip if already released
+if git ls-remote --tags origin "$tag" | grep -q "$tag"; then
+    echo "$tag already exists, nothing to release"
+    exit 0
+fi
+
 echo "Releasing $tag"
 
 # Create and push tag
