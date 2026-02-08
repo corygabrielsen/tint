@@ -238,6 +238,235 @@ INNEREOF
 
 
 
+# =============================================================================
+# Interactive Picker Tests (via PTY helper)
+# =============================================================================
+
+# Helper: run tint_pick in a PTY with simulated keystrokes
+# Usage: _pick <key> [<key> ...]
+# Sets: PICK_EXIT (exit code), PICK_STDOUT (captured output)
+_pick() {
+    local result
+    result=$(python3 "$DIR/test/pty_helper.py" "$@" 2>/dev/null)
+    PICK_EXIT=$(echo "$result" | grep '^exit:' | cut -d: -f2)
+    PICK_STDOUT=$(echo "$result" | grep '^stdout:' | cut -d: -f2-)
+}
+
+@test "picker: navigate right and select" {
+    _pick right enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (first palette entry)
+}
+
+@test "picker: navigate left wraps to last entry" {
+    _pick left enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#300a24" ]  # ubuntu (last palette entry)
+}
+
+@test "picker: right then left returns to start" {
+    _pick right left enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "" ]  # idx 0 = reset to default (no hex output)
+}
+
+@test "picker: cancel with escape" {
+    _pick right escape
+    [ "$PICK_EXIT" -eq 1 ]
+    [ "$PICK_STDOUT" = "" ]
+}
+
+@test "picker: cancel with q" {
+    _pick right q
+    [ "$PICK_EXIT" -eq 1 ]
+    [ "$PICK_STDOUT" = "" ]
+}
+
+@test "picker: multiple navigations" {
+    _pick right right right enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#2e3440" ]  # nord (third palette entry)
+}
+
+@test "picker: vim keys work" {
+    _pick l l enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#282a36" ]  # dracula (second palette entry)
+}
+
+@test "picker: set -e does not kill script during navigation" {
+    # Regression test: _tint_render used [ test ] && cmd which returns 1
+    # under set -e when the test is false, killing the script.
+    _pick right enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1e1e1e" ]
+}
+
+@test "tint_pick rejects headless invocation" {
+    # tint_pick checks /dev/tty accessibility (not -t 0/-t 1, since stdout
+    # is piped in hex=$(tint_pick) usage). Should fail early with a clear
+    # message in headless contexts where /dev/tty is unavailable.
+    # Note: < /dev/null only redirects stdin; /dev/tty is still accessible
+    # from an interactive terminal. Use setsid to detach from the controlling
+    # terminal so /dev/tty becomes unavailable.
+    run setsid bash -c "source '$DIR/tint' && tint_pick"
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "requires a terminal" ]]
+}
+
+@test "picker tests work from non-repo directory" {
+    # CR-009: pty_helper.py uses source ./tint which assumes cwd is repo root.
+    # Tests should pass even when invoked from a different directory.
+    cd /tmp
+    run bats "$DIR/test/tint.bats" -f "picker: navigate right and select"
+    [ "$status" -eq 0 ]
+}
+
+@test "tint_pick rejects non-bash shell with leaked BASH_VERSION" {
+    # CR-006: BASH_VERSION can leak via environment into non-bash shells.
+    # tint_pick must use subshell array syntax test, not simple presence checks.
+    run env BASH_VERSION=5 dash -c ". '$DIR/tint'; tint_pick"
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "requires bash" ]]
+    # Must NOT contain "Bad substitution" (the crash this prevents)
+    [[ ! "$output" =~ "Bad substitution" ]]
+}
+
+@test "tint_pick rejects non-bash shell with spoofed BASH_VERSINFO" {
+    # CR-009: BASH_VERSINFO can be set as plain env var, fooling presence checks.
+    # Only real bash can parse array subscript syntax like ${BASH_VERSINFO[0]}.
+    run env BASH_VERSINFO=5 dash -c ". '$DIR/tint'; tint_pick"
+    [ "$status" -ne 0 ]
+    [[ "$output" =~ "requires bash" ]]
+    [[ ! "$output" =~ "Bad substitution" ]]
+}
+
+@test "tint_pick preserves caller EXIT trap in direct call" {
+    # CR-005/CR-008: tint_pick must restore caller's EXIT trap when called
+    # directly (not in command substitution).
+    local result
+    result=$(python3 - "$DIR" <<'PYEOF'
+import os, sys, time, select
+tint_dir = sys.argv[1]
+master, slave = os.openpty()
+pid = os.fork()
+if pid == 0:
+    os.setsid(); os.close(master)
+    sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
+    os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
+    if slave > 2: os.close(slave)
+    cmd = "source '" + tint_dir + "/tint'; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
+    os.execvp('bash', ['bash', '-c', cmd])
+else:
+    os.close(slave)
+    time.sleep(0.3)
+    os.write(master, b'q')
+    _, status = os.waitpid(pid, 0)
+    out = b''
+    while True:
+        r, _, _ = select.select([master], [], [], 0.1)
+        if not r: break
+        try:
+            c = os.read(master, 4096)
+            if not c: break
+            out += c
+        except OSError: break
+    print(out.decode('utf-8', 'replace'))
+PYEOF
+)
+    # The caller's EXIT trap should still be present after tint_pick returns
+    [[ "$result" =~ "echo MYTRAP" ]]
+}
+
+@test "tint_pick in subshell does not corrupt stdout with EXIT trap" {
+    # CR-005: hex=$(tint_pick) must not include caller EXIT trap output.
+    local result
+    result=$(python3 - "$DIR" <<'PYEOF'
+import os, sys, time, select
+tint_dir = sys.argv[1]
+master, slave = os.openpty()
+pid = os.fork()
+if pid == 0:
+    os.setsid(); os.close(master)
+    sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
+    os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
+    if slave > 2: os.close(slave)
+    cmd = "source '" + tint_dir + "/tint'; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    os.execvp('bash', ['bash', '-c', cmd])
+else:
+    os.close(slave)
+    time.sleep(0.3)
+    os.write(master, b'\x1b[C')
+    time.sleep(0.05)
+    os.write(master, b'\r')
+    _, status = os.waitpid(pid, 0)
+    out = b''
+    while True:
+        r, _, _ = select.select([master], [], [], 0.1)
+        if not r: break
+        try:
+            c = os.read(master, 4096)
+            if not c: break
+            out += c
+        except OSError: break
+    print(out.decode('utf-8', 'replace'))
+PYEOF
+)
+    # HEX value should be a clean 6-digit hex, not contaminated with trap output.
+    # "LEAKED" will appear later (from the parent's EXIT trap), which is fine —
+    # it just must not be part of the hex= capture.
+    # Strip control characters (PTY adds \r, escape sequences) before matching.
+    local clean
+    clean=$(printf '%s' "$result" | sed 's/\x1b\[[^m]*m//g; s/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\r//g')
+    [[ "$clean" =~ HEX:#[0-9a-fA-F]{6} ]]
+    # Verify "LEAKED" is not embedded in the HEX value
+    [[ ! "$clean" =~ HEX:#[0-9a-fA-F]{6}LEAKED ]]
+}
+
+@test "tint_pick subshell stdout clean when BASHPID unset (Bash 3.2 compat)" {
+    # CR-010: BASHPID doesn't exist on Bash 3.2, so ${BASHPID:-$$} always
+    # equals $$. This breaks subshell detection, causing EXIT trap to be
+    # saved/restored inside command substitution, corrupting stdout.
+    # The fix uses BASH_SUBSHELL (available since Bash 3.0) instead.
+    local result
+    result=$(python3 - "$DIR" <<'PYEOF'
+import os, sys, time, select
+tint_dir = sys.argv[1]
+master, slave = os.openpty()
+pid = os.fork()
+if pid == 0:
+    os.setsid(); os.close(master)
+    sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
+    os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
+    if slave > 2: os.close(slave)
+    cmd = "source '" + tint_dir + "/tint'; unset BASHPID; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    os.execvp('bash', ['bash', '-c', cmd])
+else:
+    os.close(slave)
+    time.sleep(0.3)
+    os.write(master, b'\x1b[C')
+    time.sleep(0.05)
+    os.write(master, b'\r')
+    _, status = os.waitpid(pid, 0)
+    out = b''
+    while True:
+        r, _, _ = select.select([master], [], [], 0.1)
+        if not r: break
+        try:
+            c = os.read(master, 4096)
+            if not c: break
+            out += c
+        except OSError: break
+    print(out.decode('utf-8', 'replace'))
+PYEOF
+)
+    local clean
+    clean=$(printf '%s' "$result" | sed 's/\x1b\[[^m]*m//g; s/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\r//g')
+    [[ "$clean" =~ HEX:#[0-9a-fA-F]{6} ]]
+    # LEAKED must not be embedded in the hex capture
+    [[ ! "$clean" =~ HEX:#[0-9a-fA-F]{6}LEAKED ]]
+}
+
 @test "TINT_PALETTE env overrides default" {
     # Set env before sourcing so _tint_load_palette sees it as a string
     export TINT_PALETTE=$'custom:#abcdef'
