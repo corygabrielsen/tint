@@ -1,18 +1,32 @@
 # tint
 
-Terminal background color tool using OSC 11 escape sequences.
+Terminal background color picker with live preview.
+
+```
+  ←/→ Navigate   Enter: Select   Esc: Cancel
+  ████████  dracula      #282a36   [3/29] *
+```
 
 ## Usage
 
 ```bash
+tint                  # Interactive picker with live preview
 tint dracula          # Set by name
 tint "#282a36"        # Set by hex
 tint random           # Pick a random color
 tint --reset          # Reset to terminal default
 tint --query          # Query current background
 tint --list           # List available colors
-tint --names          # List names only
 ```
+
+### Interactive Controls
+
+| Key | Action |
+|-----|--------|
+| `←` `→` `h` `l` | Navigate colors |
+| `↑` `↓` `k` `j` | Navigate colors |
+| `Enter` | Select color |
+| `Esc` `q` | Cancel (restore original) |
 
 ## Available Colors
 
@@ -39,14 +53,14 @@ Then:
 
 ```bash
 export TINT_PALETTE_FILE=~/.config/tint/palette.conf
-tint dracula
+tint
 ```
 
 Or inline:
 
 ```bash
 export TINT_PALETTE=$'custom1:#111111\ncustom2:#222222'
-tint custom1
+tint
 ```
 
 ## Library Usage
@@ -62,6 +76,7 @@ tint_reset              # Reset to default
 tint_resolve "dracula"  # Resolve name → #282a36
 tint_lookup "dracula"   # Look up in palette → #282a36
 tint_list               # Print all palette entries
+tint_pick "$current"    # Interactive picker → selected hex
 ```
 
 ## Shell Integration
@@ -84,7 +99,8 @@ echo "dracula" > ~/projects/myproject/.tint
 
 | Feature | Requirement |
 |---------|-------------|
-| All commands | Any POSIX shell (dash, ash, sh) |
+| Interactive picker (`tint`) | Bash 3.2+ |
+| All other commands | Any POSIX shell (dash, ash, sh) |
 | Terminal | OSC 11 support (most modern terminals) |
 
 Tested on: iTerm2, Alacritty, Kitty, Windows Terminal, GNOME Terminal, Konsole

@@ -40,6 +40,9 @@
 
 TINT_VERSION="0.1.0"
 
+# Escape character for POSIX compatibility
+_TINT_ESC=$(printf '\033')
+
 # =============================================================================
 # Palette
 # =============================================================================
@@ -268,11 +271,290 @@ tint_supports_color() {
     return 0
 }
 
+# =============================================================================
+# Interactive Picker
+# =============================================================================
+
+_tint_hide_cursor() { printf '\e[?25l' >/dev/tty; }
+_tint_show_cursor() { printf '\e[?25h' >/dev/tty; }
+_tint_clear_line() { printf '\r\e[K' >/dev/tty; }
+_tint_cleanup() {
+    _tint_show_cursor
+    # Restore original background on signal interruption
+    if [ -n "${_TINT_ORIGINAL_BG:-}" ]; then
+        tint_set "$_TINT_ORIGINAL_BG"
+    elif [ "${_TINT_PREVIEWED:-0}" -eq 1 ]; then
+        # Only reset if we actually previewed colors; otherwise leave untouched
+        tint_reset
+    fi
+}
+
+_tint_render() {
+    local idx="$1" default_idx="$2" original_bg="$3" total="$4"
+    local name hex r g b
+
+    _tint_clear_line
+
+    if [ "$idx" -eq 0 ]; then
+        # Honest naming: if we don't know the original, we'll reset to default
+        if [ -n "$original_bg" ]; then
+            name="(unchanged)"
+        else
+            name="(reset to default)"
+        fi
+        hex="$original_bg"
+    else
+        # Mark that we've shown a preview color (for cancel/unchanged logic)
+        _TINT_PREVIEWED=1
+        local entry
+        entry=$(_tint_palette_get "$idx")
+        name="${entry%%:*}"
+        hex="${entry#*:}"
+    fi
+
+    if [ -n "$hex" ]; then
+        tint_set "$hex"
+        r=$(printf '%d' "0x$(echo "$hex" | cut -c2-3)")
+        g=$(printf '%d' "0x$(echo "$hex" | cut -c4-5)")
+        b=$(printf '%d' "0x$(echo "$hex" | cut -c6-7)")
+        printf '  \e[48;2;%d;%d;%dm        \e[0m  %-12s %-9s [%d/%d]' \
+            "$r" "$g" "$b" "$name" "$hex" "$((idx + 1))" "$total" >/dev/tty
+    else
+        # Original background unknown (OSC 11 query failed)
+        if [ "$idx" -eq 0 ] && [ "${_TINT_PREVIEWED:-0}" -eq 1 ]; then
+            # Reset to show what "reset to default" means
+            tint_reset
+        fi
+        # Don't change background for palette entries - preserve whatever the user had
+        printf '  \e[2m- - - -\e[0m  %-12s %-9s [%d/%d]' \
+            "$name" "(unknown)" "$((idx + 1))" "$total" >/dev/tty
+    fi
+
+    if [ "$idx" -eq "$default_idx" ]; then printf ' *' >/dev/tty; fi
+}
+
+# tint_pick [current] - Interactive picker
+# Returns 0 with selected hex on stdout, or 1 with no output if cancelled.
+tint_pick() {
+    # Bash required for read -n/-t used in interactive picker.
+    # Test actual bash array syntax in a subshell — simple presence checks
+    # like ${BASH_VERSINFO:-} can be fooled by env var spoofing (e.g.,
+    # BASH_VERSINFO=5 in dash). Only real bash can parse array subscripts.
+    # The subshell catches the fatal "Bad substitution" without killing us.
+    # shellcheck disable=SC3028,SC3054
+    if ! (eval '[ "${BASH_VERSINFO[0]+_}" = _ ]') 2>/dev/null; then
+        printf 'tint_pick: requires bash\n' >&2
+        return 1
+    fi
+    # TTY required for interactive display. CLI entry (_tint_main) checks this
+    # before calling tint_pick, but library callers may invoke it directly in
+    # headless contexts (e.g., scripts, CI). Guard here to fail early with a
+    # clear message rather than dying on the first >/dev/tty write.
+    # Note: we check /dev/tty (not -t 0 / -t 1) because tint_pick uses /dev/tty
+    # for all interactive I/O, while stdout carries the selected hex value.
+    # Checking -t 1 would break hex=$(tint_pick) where stdout is a pipe.
+    # Subshell probe: (: >/dev/tty) tests /dev/tty without mutating the
+    # caller's fd table. Using exec 9>/dev/tty would close fd 9 in the
+    # caller's shell, breaking code that already uses it.
+    if ! (: >/dev/tty) 2>/dev/null; then
+        printf 'tint_pick: requires a terminal (no TTY detected)\n' >&2
+        return 1
+    fi
+
+    local current="${1:-}"
+    local original_bg idx=0 default_idx=0 key key2 key3 entry i
+    local palette_count
+    palette_count=$(_tint_palette_count)
+    local total=$(( palette_count + 1 ))
+    local max=$(( total - 1 ))
+
+    # Try terminal query first; fallback to resolving current to hex
+    original_bg=$(tint_query) || original_bg=$(tint_resolve "${current:-}" 2>/dev/null) || original_bg=""
+    # Export for _tint_cleanup to restore on signal interruption
+    _TINT_ORIGINAL_BG="$original_bg"
+    # Track whether we've previewed any colors (for smart cancel behavior)
+    _TINT_PREVIEWED=0
+
+    # Find starting index if current setting matches a palette entry
+    # Normalize current to lowercase hex for comparison (handles names and uppercase hex)
+    if [ -n "$current" ]; then
+        local current_hex
+        current_hex=$(tint_resolve "$current" 2>/dev/null | tr '[:upper:]' '[:lower:]') || current_hex=""
+        if [ -n "$current_hex" ]; then
+            i=1
+            while [ "$i" -le "$palette_count" ]; do
+                entry=$(_tint_palette_get "$i")
+                if [ "$(printf '%s' "${entry#*:}" | tr '[:upper:]' '[:lower:]')" = "$current_hex" ]; then
+                    idx=$i
+                    default_idx=$idx
+                    break
+                fi
+                i=$((i + 1))
+            done
+        fi
+    fi
+
+    # Save existing traps to restore on exit (for library usage).
+    # EXIT is saved separately and only restored when not in a subshell —
+    # in command substitution (hex=$(tint_pick)), restoring EXIT would fire
+    # the caller's trap prematurely, corrupting stdout output.
+    # Uses BASH_SUBSHELL (Bash 3.0+) instead of BASHPID (Bash 4.0+) so
+    # this works on Bash 3.2 (macOS default).
+    local _tint_saved_traps _tint_saved_exit
+    _tint_saved_traps=$(trap -p INT TERM 2>/dev/null || true)
+    # shellcheck disable=SC3028
+    if [ "${BASH_SUBSHELL:-0}" -eq 0 ]; then
+        _tint_saved_exit=$(trap -p EXIT 2>/dev/null || true)
+    else
+        _tint_saved_exit=""
+    fi
+
+    # Use a flag for signal handling instead of exit, so we don't kill the
+    # parent shell when sourced as a library. The read loop checks this flag.
+    _TINT_INTERRUPTED=0
+    trap '_tint_cleanup' EXIT
+    trap '_tint_cleanup; _TINT_INTERRUPTED=130' INT
+    trap '_tint_cleanup; _TINT_INTERRUPTED=143' TERM
+    _tint_hide_cursor
+
+    # Arrow keys send ESC + "[" + letter. 10ms timeout balances responsiveness
+    # with giving slow connections time to send the full sequence. On very slow
+    # links where arrow keys don't register, use vim keys (h/j/k/l) instead —
+    # they are single characters and bypass the escape sequence timeout entirely.
+    # Bash 4+ supports fractional timeouts; Bash 3.x needs integer (1 second min).
+    local _tint_esc_timeout=0.01
+    # shellcheck disable=SC3028
+    local _tint_read_timeout=0.5
+    # BASH_VERSINFO is checked with fallback
+    # shellcheck disable=SC3028
+    if [ "${BASH_VERSINFO[0]:-3}" -lt 4 ]; then
+        _tint_esc_timeout=1
+        _tint_read_timeout=1
+    fi
+    printf '\e[2m  ←/→ Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    _tint_render "$idx" "$default_idx" "$original_bg" "$total"
+
+    while true; do
+        # Check if interrupted by signal (Ctrl+C or SIGTERM)
+        if [ "$_TINT_INTERRUPTED" -ne 0 ]; then
+            trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+            return "$_TINT_INTERRUPTED"
+        fi
+        # Timeout ensures signal flag (_TINT_INTERRUPTED) gets checked even
+        # when bash restarts read after a caught signal (SA_RESTART behavior).
+        if ! IFS= read -rsn1 -t "$_tint_read_timeout" key </dev/tty; then
+            # Check if interrupted by signal
+            if [ "$_TINT_INTERRUPTED" -ne 0 ]; then
+                trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+                return "$_TINT_INTERRUPTED"
+            fi
+            # Empty key = timeout, not EOF — loop and re-check
+            if [ -z "${key:-}" ]; then continue; fi
+            # EOF or read error - treat as cancel
+            printf '\n' >/dev/tty
+            if [ -n "$original_bg" ]; then
+                tint_set "$original_bg"
+            elif [ "$_TINT_PREVIEWED" -eq 1 ]; then
+                tint_reset
+            fi
+            _tint_show_cursor; trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+            return 1
+        fi
+        # Re-check after read (signal may have fired during read)
+        if [ "$_TINT_INTERRUPTED" -ne 0 ]; then
+            trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+            return "$_TINT_INTERRUPTED"
+        fi
+        case "$key" in
+            "$_TINT_ESC")
+                if IFS= read -rsn1 -t "$_tint_esc_timeout" key2 </dev/tty 2>/dev/null; then
+                    # CSI sequences: ESC [ A/B/C/D (most terminals)
+                    # SS3 sequences: ESC O A/B/C/D (some terminals, notably older xterm modes)
+                    case "$key2" in
+                        "["|"O")
+                            # Timeout on key3 prevents hang on malformed/partial escape sequences
+                            IFS= read -rsn1 -t "$_tint_esc_timeout" key3 </dev/tty 2>/dev/null || continue
+                            case "$key3" in
+                                D|A) idx=$(( idx > 0 ? idx - 1 : max )) ;;
+                                C|B) idx=$(( idx < max ? idx + 1 : 0 )) ;;
+                            esac
+                            _tint_render "$idx" "$default_idx" "$original_bg" "$total"
+                            ;;
+                    esac
+                else
+                    # Escape pressed - cancel
+                    printf '\n' >/dev/tty
+                    if [ -n "$original_bg" ]; then
+                        tint_set "$original_bg"
+                    elif [ "$_TINT_PREVIEWED" -eq 1 ]; then
+                        # Only reset if we previewed colors; otherwise leave untouched
+                        tint_reset
+                    fi
+                    _tint_show_cursor; trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+                    return 1
+                fi
+                ;;
+            h|k) idx=$(( idx > 0 ? idx - 1 : max )); _tint_render "$idx" "$default_idx" "$original_bg" "$total" ;;
+            l|j) idx=$(( idx < max ? idx + 1 : 0 )); _tint_render "$idx" "$default_idx" "$original_bg" "$total" ;;
+            q)
+                printf '\n' >/dev/tty
+                if [ -n "$original_bg" ]; then
+                    tint_set "$original_bg"
+                elif [ "$_TINT_PREVIEWED" -eq 1 ]; then
+                    # Only reset if we previewed colors; otherwise leave untouched
+                    tint_reset
+                fi
+                _tint_show_cursor; trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+                return 1
+                ;;
+            "")
+                printf '\n' >/dev/tty
+                _tint_show_cursor; trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
+                # Return value semantics for tint_pick:
+                #   - Return 0 = user confirmed selection (Enter key)
+                #     Output: the selected hex color (or empty if original unknown)
+                #   - Return 1 = user cancelled (Esc/q/EOF), no stdout output
+                #   - Return 130/143 = interrupted by signal, no stdout output
+                #
+                # When idx=0 (unchanged) with empty original_bg and _TINT_PREVIEWED=1:
+                #   We return 0 with empty output. This is intentional:
+                #   - Return 0 means the user made a deliberate choice (to keep unchanged)
+                #   - Empty output means we reset to terminal default (original unknown)
+                #   - Callers should check BOTH return code AND output:
+                #       hex=$(tint_pick "$current")
+                #       if [ $? -eq 0 ]; then
+                #           # User selected something
+                #           [ -n "$hex" ] && save_color "$hex"  # Only save if we got a color
+                #       fi
+                if [ "$idx" -eq 0 ]; then
+                    # Restore original background or reset to default
+                    if [ -n "$original_bg" ]; then
+                        tint_set "$original_bg"
+                        printf '%s' "$original_bg"
+                    else
+                        # Label is "(reset to default)" - honor that choice
+                        tint_reset
+                    fi
+                else
+                    entry=$(_tint_palette_get "$idx")
+                    printf '%s' "${entry#*:}"
+                fi
+                return 0
+                ;;
+        esac
+    done
+}
+
+# =============================================================================
+# CLI
+# =============================================================================
+
 _tint_usage() {
     cat <<'EOF'
 tint - terminal background color picker
 
 USAGE
+    tint                  Interactive picker with live preview
     tint <name|hex>       Set background directly
     tint random           Pick a random color
     tint --reset          Reset to terminal default
@@ -281,6 +563,12 @@ USAGE
     tint --names          List names only
     tint --help           Show this help
     tint --version        Show version
+
+INTERACTIVE CONTROLS
+    ←/→  h/l              Navigate colors
+    ↑/↓  k/j              Navigate colors
+    Enter                 Select color
+    Esc  q                Cancel (restore original)
 
 EXAMPLES
     tint dracula          Set by name
@@ -315,7 +603,27 @@ _tint_main() {
     fi
     case "${1:-}" in
         "")
-            _tint_usage
+            # Interactive mode requires bash for read -n/-t (single-char input).
+            # We use /bin/sh shebang so non-interactive commands work on systems
+            # without bash (Alpine, busybox). Re-exec into bash for interactive.
+            # shellcheck disable=SC3028,SC3054
+            if ! (eval '[ "${BASH_VERSINFO[0]+_}" = _ ]') 2>/dev/null; then
+                # $0 contains the full path even when invoked via PATH - dash, zsh,
+                # and busybox sh all resolve it. If bash is available, re-exec into
+                # it. On systems without bash (e.g., Alpine), fall through to error.
+                if command -v bash >/dev/null 2>&1; then
+                    exec bash "$0" "$@"
+                fi
+                echo "error: interactive mode requires bash" >&2
+                echo "usage: tint <color|hex>  or  tint --list" >&2
+                exit 1
+            fi
+            if ! tint_supports_color; then
+                echo "error: interactive mode requires a terminal" >&2
+                echo "usage: tint <color|hex>  or  tint --list" >&2
+                exit 1
+            fi
+            tint_pick
             ;;
         -h|--help)
             _tint_usage

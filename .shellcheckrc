@@ -2,9 +2,22 @@
 # False positive on OSC escape sequences: \033\\ is a literal ST (String Terminator)
 disable=SC1003
 
+# SC1009: The mentioned syntax error was in this brace group
+# tint_pick() uses bash-only syntax (read -n/-t) inside a #!/bin/sh script.
+# The bash-only code is guarded at runtime but shellcheck can't parse it in sh mode.
+disable=SC1009
+
 # SC3043: In POSIX sh, 'local' is undefined
+# SC3045: In POSIX sh, read -s / trap -p is undefined
 # SC3028: In POSIX sh, RANDOM is undefined
 # tint is #!/bin/sh for portability of non-interactive commands (tint <color>,
 # --list, --reset, --help) but deliberately uses local (de facto standard in
-# dash/ash/bash) and RANDOM for the random color feature.
-disable=SC3043,SC3028
+# dash/ash/bash) and bash-only features in the interactive picker, which is
+# guarded by a runtime bash re-exec.
+disable=SC3043,SC3045,SC3028
+
+# SC2120: function references arguments, but none are ever passed
+# SC2119: Use func "$@" if function's $1 should mean script's $1
+# tint_pick() uses ${1:-} for an optional current-color argument. It is called
+# without arguments intentionally (the default is detected at runtime).
+disable=SC2120,SC2119
