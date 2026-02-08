@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.1.0"
+TINT_VERSION="0.2.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
