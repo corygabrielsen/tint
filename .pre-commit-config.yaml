@@ -20,3 +20,12 @@ repos:
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: trailing-whitespace
+
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: validate-commit-message
+        name: Validate commit message (50/72 rule)
+        entry: scripts/validate-commit-message.sh --no-pr-suffix
+        language: script
+        stages: [commit-msg]
