@@ -36,7 +36,8 @@ case "$1" in
             *)  ;; # create tag — no-op
         esac
         ;;
-    config|push) ;; # no-op
+    rev-parse) echo "abc1234def5678" ;;
+    fetch) ;; # no-op
 esac
 STUB
     chmod +x "$SANDBOX/bin/git"
@@ -297,7 +298,7 @@ STUB
 # Happy Path
 # =============================================================================
 
-@test "release: full flow creates tag, pushes, and creates release" {
+@test "release: full flow creates release with --target" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
@@ -306,9 +307,11 @@ STUB
     [[ "$output" == *"Releasing v0.3.0"* ]]
     [[ "$output" == *"Released v0.3.0"* ]]
 
-    # Verify the right commands were called
+    # Verify gh release create is called with --target (tag created via API, not git)
     run cat "$SANDBOX/calls.log"
-    [[ "$output" == *"git tag v0.3.0"* ]]
-    [[ "$output" == *"git push origin v0.3.0"* ]]
-    [[ "$output" == *"gh release create v0.3.0"* ]]
+    [[ "$output" == *"gh release create v0.3.0 --target abc1234def5678"* ]]
+    # No local git tag or push
+    [[ "$output" != *"git tag v0.3.0"* ]]
+    [[ "$output" != *"git push origin v0.3.0"* ]]
+    [[ "$output" != *"git config"* ]]
 }
