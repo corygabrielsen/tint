@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Guard: only run in CI
+[ -n "${CI:-}" ] || { echo "::error::release.sh must be run in CI" >&2; exit 1; }
+
 # Extract version from tint script
 [ -f tint ] || { echo "::error::tint file not found" >&2; exit 1; }
 [ "$(grep -c '^TINT_VERSION=' tint)" -eq 1 ] || { echo "::error::Expected exactly one TINT_VERSION in tint" >&2; exit 1; }

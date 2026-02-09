@@ -19,6 +19,7 @@ setup() {
 
     cd "$SANDBOX" || return
     export PATH="$SANDBOX/bin:$PATH"
+    export CI=true
 }
 
 _create_stubs() {
@@ -121,6 +122,18 @@ STUB
 echo "fakechecksum  $1"
 STUB
     chmod +x "$SANDBOX/bin/sha256sum"
+}
+
+# =============================================================================
+# CI Guard
+# =============================================================================
+
+@test "release: exits 1 outside CI" {
+    unset CI
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"must be run in CI"* ]]
 }
 
 # =============================================================================
