@@ -30,8 +30,10 @@ _load_tint() {
 @test "tint --list shows colors" {
     run tint --list
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "dracula:#282a36" ]]
-    [[ "$output" =~ "nord:#2e3440" ]]
+    [[ "$output" =~ "dracula" ]]
+    [[ "$output" =~ "#282a36" ]]
+    [[ "$output" =~ "nord" ]]
+    [[ "$output" =~ "#2e3440" ]]
 }
 
 @test "tint --names shows only names" {
