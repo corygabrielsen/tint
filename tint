@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.2.5"
+TINT_VERSION="0.3.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -277,44 +277,69 @@ tint_supports_color() {
 
 _tint_hide_cursor() { printf '\e[?25l' >/dev/tty; }
 _tint_show_cursor() { printf '\e[?25h' >/dev/tty; }
-_tint_clear_line() { printf '\r\e[K' >/dev/tty; }
+_tint_term_lines() { tput lines 2>/dev/null || printf '%s' "${LINES:-24}"; }
+
+_tint_erase_picker() {
+    # Cursor is on the scroll indicator line (N rows below first palette row,
+    # which is 1 line below the hint line).
+    # Move up to the hint line: N (palette rows) + 1 (hint line)
+    local n="${_TINT_RENDERED_ROWS:-0}"
+    if [ "$n" -gt 0 ]; then
+        printf '\e[%dA' "$(( n + 1 ))" >/dev/tty
+    fi
+    # Clear hint line + N palette rows + scroll indicator line
+    local i=0
+    while [ "$i" -le "$(( n + 1 ))" ]; do
+        printf '\r\e[K\n' >/dev/tty
+        i=$(( i + 1 ))
+    done
+    # Move back up to the hint line position
+    printf '\e[%dA' "$(( n + 2 ))" >/dev/tty
+}
+
 _tint_cleanup() {
     _tint_show_cursor
+    _tint_erase_picker
+    # Restore terminal echo mode
+    if [ -n "${_TINT_SAVED_STTY:-}" ]; then
+        stty "$_TINT_SAVED_STTY" </dev/tty 2>/dev/null
+    fi
     # Restore original background on signal interruption
     if [ -n "${_TINT_ORIGINAL_BG:-}" ]; then
         tint_set "$_TINT_ORIGINAL_BG"
     elif [ "${_TINT_PREVIEWED:-0}" -eq 1 ]; then
-        # Only reset if we actually previewed colors; otherwise leave untouched
         tint_reset
     fi
 }
 
-_tint_render() {
-    local idx="$1" default_idx="$2" original_bg="$3" total="$4"
-    local name hex r g b tw
+# _tint_render_row <row_idx> <highlighted> <default_idx> <original_bg> <total>
+# Prints a single picker row to stdout (caller redirects to /dev/tty).
+# Uses _tint_names[] and _tint_hexes[] arrays (set by tint_pick).
+_tint_render_row() {
+    local row_idx="$1" highlighted="$2" default_idx="$3" original_bg="$4" total="$5"
+    local name hex r g b tw fg marker label
     tw=${#total}
 
-    _tint_clear_line
-
-    if [ "$idx" -eq 0 ]; then
-        # Honest naming: if we don't know the original, we'll reset to default
-        if [ -n "$original_bg" ]; then
-            name="(unchanged)"
-        else
-            name="(reset to default)"
-        fi
+    if [ "$row_idx" -eq 0 ]; then
+        if [ -n "$original_bg" ]; then name="(unchanged)"; else name="(reset to default)"; fi
         hex="$original_bg"
     else
-        # Mark that we've shown a preview color (for cancel/unchanged logic)
-        _TINT_PREVIEWED=1
-        local entry
-        entry=$(_tint_palette_get "$idx")
-        name="${entry%%:*}"
-        hex="${entry#*:}"
+        # shellcheck disable=SC3054
+        name="${_tint_names[$row_idx]}"
+        # shellcheck disable=SC3054
+        hex="${_tint_hexes[$row_idx]}"
+    fi
+
+    # Build prefix: > for cursor, * for default, space otherwise
+    if [ "$highlighted" -eq 1 ]; then
+        marker="> "
+    elif [ "$row_idx" -eq "$default_idx" ] || { [ "$row_idx" -eq 0 ] && [ "$default_idx" -gt 0 ]; }; then
+        marker="* "
+    else
+        marker="  "
     fi
 
     if [ -n "$hex" ]; then
-        tint_set "$hex"
         r=$(printf '%d' "0x$(echo "$hex" | cut -c2-3)")
         g=$(printf '%d' "0x$(echo "$hex" | cut -c4-5)")
         b=$(printf '%d' "0x$(echo "$hex" | cut -c6-7)")
@@ -325,23 +350,85 @@ _tint_render() {
         else
             fg="97"
         fi
-        marker="  "
-        if [ "$idx" -eq "$default_idx" ] || { [ "$idx" -eq 0 ] && [ "$default_idx" -gt 0 ]; }; then marker="* "; fi
-        label=$(printf '[%*d/%d]    #%s    %s' "$tw" "$((idx + 1))" "$total" "${hex#\#}" "$name")
-        printf '%s\e[%s;48;2;%d;%d;%dm %-41s\e[0m' \
-            "$marker" "$fg" "$r" "$g" "$b" "$label" >/dev/tty
+        label=$(printf '%*d.    #%s    %s' "$tw" "$((row_idx + 1))" "${hex#\#}" "$name")
+        if [ "$highlighted" -eq 1 ]; then
+            printf '%s\e[%s;48;2;%d;%d;%dm %-41s\e[0m' "$marker" "$fg" "$r" "$g" "$b" "$label"
+        else
+            printf '%s\e[2;%s;48;2;%d;%d;%dm %-41s\e[0m' "$marker" "$fg" "$r" "$g" "$b" "$label"
+        fi
     else
-        # Original background unknown (OSC 11 query failed)
-        if [ "$idx" -eq 0 ] && [ "${_TINT_PREVIEWED:-0}" -eq 1 ]; then
-            # Reset to show what "reset to default" means
+        label=$(printf '%*d.    - - - -    %s' "$tw" "$((row_idx + 1))" "$name")
+        if [ "$highlighted" -eq 1 ]; then
+            printf '%s%-41s' "$marker" "$label"
+        else
+            printf '%s\e[2m%-41s\e[0m' "$marker" "$label"
+        fi
+    fi
+}
+
+# _tint_render_all <idx> <default_idx> <original_bg> <total> <visible>
+# Draws the full visible window of picker rows.
+_tint_render_all() {
+    local idx="$1" default_idx="$2" original_bg="$3" total="$4" visible="$5"
+    local i highlighted win_start win_end
+
+    # Live preview: set terminal bg to highlighted color
+    if [ "$idx" -eq 0 ]; then
+        if [ -n "$original_bg" ]; then
+            tint_set "$original_bg"
+        elif [ "${_TINT_PREVIEWED:-0}" -eq 1 ]; then
             tint_reset
         fi
-        local marker label
-        marker="  "
-        if [ "$idx" -eq "$default_idx" ] || { [ "$idx" -eq 0 ] && [ "$default_idx" -gt 0 ]; }; then marker="* "; fi
-        label=$(printf '[%*d/%d]    - - - -    %s' "$tw" "$((idx + 1))" "$total" "$name")
-        printf '%s\e[2m%-41s\e[0m' "$marker" "$label" >/dev/tty
+    else
+        _TINT_PREVIEWED=1
+        # shellcheck disable=SC3054
+        tint_set "${_tint_hexes[$idx]}"
     fi
+
+    # Compute scroll window (center cursor, clamp to edges)
+    if [ "$visible" -ge "$total" ]; then
+        win_start=0
+        win_end=$(( total - 1 ))
+    else
+        local half=$(( visible / 2 ))
+        win_start=$(( idx - half ))
+        if [ "$win_start" -lt 0 ]; then win_start=0; fi
+        win_end=$(( win_start + visible - 1 ))
+        if [ "$win_end" -ge "$total" ]; then
+            win_end=$(( total - 1 ))
+            win_start=$(( win_end - visible + 1 ))
+        fi
+    fi
+
+    # Move cursor up to first row position (for redraw).
+    # Cursor is on the scroll indicator line (N rows below first row).
+    if [ "${_TINT_RENDERED_ROWS:-0}" -gt 0 ]; then
+        printf '\e[%dA' "$(( _TINT_RENDERED_ROWS ))" >/dev/tty
+    fi
+
+    # Draw each visible row
+    local rows_printed=0
+    i=$win_start
+    while [ "$i" -le "$win_end" ]; do
+        if [ "$i" -eq "$idx" ]; then highlighted=1; else highlighted=0; fi
+        printf '\r\e[K' >/dev/tty
+        _tint_render_row "$i" "$highlighted" "$default_idx" "$original_bg" "$total" >/dev/tty
+        printf '\n' >/dev/tty
+        rows_printed=$(( rows_printed + 1 ))
+        i=$(( i + 1 ))
+    done
+
+    # Scroll indicator (only when entries are hidden)
+    printf '\r\e[K' >/dev/tty
+    if [ "$win_start" -gt 0 ] && [ "$win_end" -lt $(( total - 1 )) ]; then
+        printf '\e[2m  \xe2\x86\x91 %d more \xc2\xb7 \xe2\x86\x93 %d more\e[0m' "$win_start" "$(( total - 1 - win_end ))" >/dev/tty
+    elif [ "$win_start" -gt 0 ]; then
+        printf '\e[2m  \xe2\x86\x91 %d more\e[0m' "$win_start" >/dev/tty
+    elif [ "$win_end" -lt $(( total - 1 )) ]; then
+        printf '\e[2m  \xe2\x86\x93 %d more\e[0m' "$(( total - 1 - win_end ))" >/dev/tty
+    fi
+
+    _TINT_RENDERED_ROWS=$rows_printed
 }
 
 # tint_pick [current] - Interactive picker
@@ -378,6 +465,27 @@ tint_pick() {
     palette_count=$(_tint_palette_count)
     local total=$(( palette_count + 1 ))
     local max=$(( total - 1 ))
+
+    # Pre-load palette into arrays to avoid subshell forks on every render
+    # shellcheck disable=SC3054
+    local -a _tint_names _tint_hexes
+    i=1
+    while [ "$i" -le "$palette_count" ]; do
+        entry=$(_tint_palette_get "$i")
+        # shellcheck disable=SC3054
+        _tint_names[i]="${entry%%:*}"
+        # shellcheck disable=SC3054
+        _tint_hexes[i]="${entry#*:}"
+        i=$((i + 1))
+    done
+
+    # Calculate visible window size based on terminal height
+    local term_lines visible
+    term_lines=$(_tint_term_lines)
+    visible=$(( term_lines - 2 ))  # reserve hint + scroll indicator
+    if [ "$visible" -gt "$total" ]; then visible=$total; fi
+    if [ "$visible" -lt 3 ]; then visible=3; fi
+    _TINT_RENDERED_ROWS=0
 
     # Query current background. If this fails, the terminal doesn't support
     # OSC 11 and tint can't work — fail fast with a diagnostic message.
@@ -440,6 +548,10 @@ ERRMSG
     # Use a flag for signal handling instead of exit, so we don't kill the
     # parent shell when sourced as a library. The read loop checks this flag.
     _TINT_INTERRUPTED=0
+    # Suppress echo for entire picker session — read -rs only suppresses
+    # during the read itself, allowing buffered input to echo during renders.
+    _TINT_SAVED_STTY=$(stty -g </dev/tty 2>/dev/null)
+    stty -echo </dev/tty 2>/dev/null
     trap '_tint_cleanup' EXIT
     trap '_tint_cleanup; _TINT_INTERRUPTED=130' INT
     trap '_tint_cleanup; _TINT_INTERRUPTED=143' TERM
@@ -459,8 +571,8 @@ ERRMSG
         _tint_esc_timeout=1
         _tint_read_timeout=1
     fi
-    printf '\e[2m  ←/→ Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
-    _tint_render "$idx" "$default_idx" "$original_bg" "$total"
+    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible"
 
     while true; do
         # Check if interrupted by signal (Ctrl+C or SIGTERM)
@@ -479,7 +591,7 @@ ERRMSG
             # Empty key = timeout, not EOF — loop and re-check
             if [ -z "${key:-}" ]; then continue; fi
             # EOF or read error - treat as cancel
-            printf '\n' >/dev/tty
+            _tint_erase_picker
             if [ -n "$original_bg" ]; then
                 tint_set "$original_bg"
             elif [ "$_TINT_PREVIEWED" -eq 1 ]; then
@@ -506,12 +618,12 @@ ERRMSG
                                 D|A) idx=$(( idx > 0 ? idx - 1 : max )) ;;
                                 C|B) idx=$(( idx < max ? idx + 1 : 0 )) ;;
                             esac
-                            _tint_render "$idx" "$default_idx" "$original_bg" "$total"
+                            _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible"
                             ;;
                     esac
                 else
                     # Escape pressed - cancel
-                    printf '\n' >/dev/tty
+                    _tint_erase_picker
                     if [ -n "$original_bg" ]; then
                         tint_set "$original_bg"
                     elif [ "$_TINT_PREVIEWED" -eq 1 ]; then
@@ -522,10 +634,10 @@ ERRMSG
                     return 1
                 fi
                 ;;
-            h|k) idx=$(( idx > 0 ? idx - 1 : max )); _tint_render "$idx" "$default_idx" "$original_bg" "$total" ;;
-            l|j) idx=$(( idx < max ? idx + 1 : 0 )); _tint_render "$idx" "$default_idx" "$original_bg" "$total" ;;
+            h|k) idx=$(( idx > 0 ? idx - 1 : max )); _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible" ;;
+            l|j) idx=$(( idx < max ? idx + 1 : 0 )); _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible" ;;
             q)
-                printf '\n' >/dev/tty
+                _tint_erase_picker
                 if [ -n "$original_bg" ]; then
                     tint_set "$original_bg"
                 elif [ "$_TINT_PREVIEWED" -eq 1 ]; then
@@ -536,7 +648,7 @@ ERRMSG
                 return 1
                 ;;
             "")
-                printf '\n' >/dev/tty
+                _tint_erase_picker
                 _tint_show_cursor; trap - EXIT INT TERM; eval "$_tint_saved_traps"; eval "$_tint_saved_exit"
                 # Return value semantics for tint_pick:
                 #   - Return 0 = user confirmed selection (Enter key)
@@ -564,8 +676,8 @@ ERRMSG
                         tint_reset
                     fi
                 else
-                    entry=$(_tint_palette_get "$idx")
-                    printf '%s' "${entry#*:}"
+                    # shellcheck disable=SC3054
+                    printf '%s' "${_tint_hexes[$idx]}"
                 fi
                 return 0
                 ;;
