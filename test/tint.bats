@@ -247,6 +247,37 @@ PYEOF
     [[ "$UNSUPPORTED_OUTPUT" =~ "EXIT:1" ]]
 }
 
+@test "tint_pick OSC 11 error shows tmux hint when TMUX is set" {
+    _pick_unsupported "export TMUX=/tmp/tmux-1000/default,1,0"
+    [[ "$UNSUPPORTED_OUTPUT" =~ "tmux set -g allow-passthrough on" ]]
+    [[ ! "$UNSUPPORTED_OUTPUT" =~ "ssh -t" ]]
+}
+
+@test "tint_pick OSC 11 error shows SSH hint when SSH_CONNECTION is set" {
+    _pick_unsupported "export SSH_CONNECTION='1.2.3.4 1234 5.6.7.8 22'"
+    [[ "$UNSUPPORTED_OUTPUT" =~ "ssh -t" ]]
+    [[ ! "$UNSUPPORTED_OUTPUT" =~ "tmux" ]]
+}
+
+@test "tint_pick OSC 11 error shows SSH hint when SSH_TTY is set" {
+    _pick_unsupported "export SSH_TTY=/dev/pts/0"
+    [[ "$UNSUPPORTED_OUTPUT" =~ "ssh -t" ]]
+}
+
+@test "tint_pick OSC 11 error prefers tmux hint over SSH" {
+    _pick_unsupported "export TMUX=/tmp/tmux-1000/default,1,0; export SSH_CONNECTION='1.2.3.4 1234 5.6.7.8 22'"
+    [[ "$UNSUPPORTED_OUTPUT" =~ "tmux set -g allow-passthrough on" ]]
+    [[ ! "$UNSUPPORTED_OUTPUT" =~ "ssh -t" ]]
+}
+
+@test "tint_pick OSC 11 error shows no hint in plain terminal" {
+    _pick_unsupported "unset TMUX SSH_TTY SSH_CONNECTION"
+    [[ ! "$UNSUPPORTED_OUTPUT" =~ "Hint:" ]]
+    [[ "$UNSUPPORTED_OUTPUT" =~ "OSC 11" ]]
+    [[ "$UNSUPPORTED_OUTPUT" =~ "Try: printf" ]]
+    [[ "$UNSUPPORTED_OUTPUT" == *"033]11;?"* ]]
+}
+
 @test "tint_resolve rejects invalid hex" {
     _load_tint
     run tint_resolve "#12345"  # 5 digits
