@@ -1,5 +1,9 @@
 # tint
 
+[![CI](https://github.com/corygabrielsen/tint/actions/workflows/ci.yml/badge.svg)](https://github.com/corygabrielsen/tint/actions/workflows/ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/corygabrielsen/tint)](https://github.com/corygabrielsen/tint/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 Terminal background color picker with live preview.
 
 ```
