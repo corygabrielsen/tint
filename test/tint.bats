@@ -11,7 +11,7 @@ _load_tint() {
 }
 
 # =============================================================================
-# CLI Tests
+# CLI
 # =============================================================================
 
 @test "tint --help shows usage" {
@@ -33,18 +33,18 @@ _load_tint() {
     [[ "$output" =~ "nord:#2e3440" ]]
 }
 
-@test "tint random picks a palette color" {
-    run tint random
-    [ "$status" -eq 0 ]
-    # Output should be "name #hex"
-    [[ "$output" =~ ^[a-zA-Z0-9].+\ #[0-9a-fA-F]{6}$ ]]
-}
-
 @test "tint --names shows only names" {
     run tint --names
     [ "$status" -eq 0 ]
     [[ "$output" =~ "dracula" ]]
     [[ ! "$output" =~ "#282a36" ]]
+}
+
+@test "tint random picks a palette color" {
+    run tint random
+    [ "$status" -eq 0 ]
+    # Output should be "name #hex"
+    [[ "$output" =~ ^[a-zA-Z0-9].+\ #[0-9a-fA-F]{6}$ ]]
 }
 
 @test "tint unknown-color fails" {
@@ -69,6 +69,10 @@ _load_tint() {
     [ "$status" -eq 0 ]
     [[ "$output" =~ "tint" ]]
 }
+
+# =============================================================================
+# Sourcing
+# =============================================================================
 
 @test "tint sourced from POSIX script does not re-exec caller" {
     # Regression: POSIX fallback must not trigger _tint_main when sourced
@@ -113,8 +117,34 @@ INNEREOF
     [[ "$output" =~ "lookup=#282a36" ]]
 }
 
+@test "_tint_is_main guards BASH_SOURCE array access" {
+    # BASH_SOURCE[0] is bash-only array syntax. In dash, [0] causes
+    # "Bad substitution". The guard must use a subshell test to prevent
+    # this even when BASH_VERSION leaks through the environment.
+    grep -qE 'eval.*BASH_SOURCE\[0\]' "$DIR/tint" || {
+        echo "_tint_is_main does not guard BASH_SOURCE array with eval"
+        return 1
+    }
+
+    # Verify dash doesn't choke on _tint_is_main when BASH_SOURCE is unset
+    run dash -c "
+        . '$DIR/tint'
+        echo 'sourced ok'
+    "
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "sourced ok" ]]
+
+    # Verify dash doesn't crash when BASH_VERSION leaks via environment
+    run env BASH_VERSION=5 BASH_SOURCE=x dash -c "
+        . '$DIR/tint'
+        echo 'spoofed ok'
+    "
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "spoofed ok" ]]
+}
+
 # =============================================================================
-# Library Tests
+# Library API
 # =============================================================================
 
 @test "tint_lookup finds color" {
@@ -165,6 +195,10 @@ INNEREOF
     [ "$status" -eq 1 ]
 }
 
+# =============================================================================
+# Palette
+# =============================================================================
+
 @test "palette has expected colors" {
     # Source directly - sourcing via function scopes the variable to that function
     source "$DIR/tint"
@@ -183,6 +217,19 @@ INNEREOF
     [ "$(_tint_palette_get 1)" = "good:#123456" ]
 }
 
+@test "TINT_PALETTE env overrides default" {
+    # Set env before sourcing so _tint_load_palette sees it as a string
+    export TINT_PALETTE=$'custom:#abcdef'
+    source "$DIR/tint"
+
+    [ "$(_tint_palette_count)" -eq 1 ]
+    [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
+}
+
+# =============================================================================
+# Code Invariants
+# =============================================================================
+
 @test "_tint_query_raw is defined as subshell function" {
     # _tint_query_raw must use ( ) not { } so trap/stty changes are isolated.
     # Match the function definition: _tint_query_raw() (
@@ -190,32 +237,6 @@ INNEREOF
         echo "_tint_query_raw is not a subshell function"
         return 1
     }
-}
-
-@test "_tint_is_main guards BASH_SOURCE array access" {
-    # BASH_SOURCE[0] is bash-only array syntax. In dash, [0] causes
-    # "Bad substitution". The guard must use a subshell test to prevent
-    # this even when BASH_VERSION leaks through the environment.
-    grep -qE 'eval.*BASH_SOURCE\[0\]' "$DIR/tint" || {
-        echo "_tint_is_main does not guard BASH_SOURCE array with eval"
-        return 1
-    }
-
-    # Verify dash doesn't choke on _tint_is_main when BASH_SOURCE is unset
-    run dash -c "
-        . '$DIR/tint'
-        echo 'sourced ok'
-    "
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "sourced ok" ]]
-
-    # Verify dash doesn't crash when BASH_VERSION leaks via environment
-    run env BASH_VERSION=5 BASH_SOURCE=x dash -c "
-        . '$DIR/tint'
-        echo 'spoofed ok'
-    "
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "spoofed ok" ]]
 }
 
 @test "tint_query has no bash-specific trap branching" {
@@ -236,10 +257,8 @@ INNEREOF
     fi
 }
 
-
-
 # =============================================================================
-# Interactive Picker Tests (via PTY helper)
+# Picker
 # =============================================================================
 
 # Helper: run tint_pick in a PTY with simulated keystrokes
@@ -270,18 +289,6 @@ _pick() {
     [ "$PICK_STDOUT" = "" ]  # idx 0 = reset to default (no hex output)
 }
 
-@test "picker: cancel with escape" {
-    _pick right escape
-    [ "$PICK_EXIT" -eq 1 ]
-    [ "$PICK_STDOUT" = "" ]
-}
-
-@test "picker: cancel with q" {
-    _pick right q
-    [ "$PICK_EXIT" -eq 1 ]
-    [ "$PICK_STDOUT" = "" ]
-}
-
 @test "picker: multiple navigations" {
     _pick right right right enter
     [ "$PICK_EXIT" -eq 0 ]
@@ -294,12 +301,32 @@ _pick() {
     [ "$PICK_STDOUT" = "#282a36" ]  # dracula (second palette entry)
 }
 
+@test "picker: cancel with escape" {
+    _pick right escape
+    [ "$PICK_EXIT" -eq 1 ]
+    [ "$PICK_STDOUT" = "" ]
+}
+
+@test "picker: cancel with q" {
+    _pick right q
+    [ "$PICK_EXIT" -eq 1 ]
+    [ "$PICK_STDOUT" = "" ]
+}
+
 @test "picker: set -e does not kill script during navigation" {
     # Regression test: _tint_render used [ test ] && cmd which returns 1
     # under set -e when the test is false, killing the script.
     _pick right enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#1e1e1e" ]
+}
+
+@test "picker tests work from non-repo directory" {
+    # CR-009: pty_helper.py uses source ./tint which assumes cwd is repo root.
+    # Tests should pass even when invoked from a different directory.
+    cd /tmp
+    run bats "$DIR/test/tint.bats" -f "picker: navigate right and select"
+    [ "$status" -eq 0 ]
 }
 
 @test "tint_pick rejects headless invocation" {
@@ -312,14 +339,6 @@ _pick() {
     run setsid bash -c "source '$DIR/tint' && tint_pick"
     [ "$status" -ne 0 ]
     [[ "$output" =~ "requires a terminal" ]]
-}
-
-@test "picker tests work from non-repo directory" {
-    # CR-009: pty_helper.py uses source ./tint which assumes cwd is repo root.
-    # Tests should pass even when invoked from a different directory.
-    cd /tmp
-    run bats "$DIR/test/tint.bats" -f "picker: navigate right and select"
-    [ "$status" -eq 0 ]
 }
 
 @test "tint_pick rejects non-bash shell with leaked BASH_VERSION" {
@@ -465,13 +484,4 @@ PYEOF
     [[ "$clean" =~ HEX:#[0-9a-fA-F]{6} ]]
     # LEAKED must not be embedded in the hex capture
     [[ ! "$clean" =~ HEX:#[0-9a-fA-F]{6}LEAKED ]]
-}
-
-@test "TINT_PALETTE env overrides default" {
-    # Set env before sourcing so _tint_load_palette sees it as a string
-    export TINT_PALETTE=$'custom:#abcdef'
-    source "$DIR/tint"
-
-    [ "$(_tint_palette_count)" -eq 1 ]
-    [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
 }

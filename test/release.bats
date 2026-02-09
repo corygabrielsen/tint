@@ -42,9 +42,10 @@ esac
 STUB
     chmod +x "$SANDBOX/bin/git"
 
-    # npx stub — handles the two calling patterns release.sh uses:
-    #   1. npx semver@7 <versions...>  — filter valid semver, sort, print
-    #   2. npx semver@7 -p <ver> -r "<range>"  — exit 0 if ver matches range
+    # npx stub — handles the three calling patterns release.sh uses:
+    #   1. npx semver@7 [--] <ver>            — single version validation
+    #   2. npx semver@7 -p <ver> -r "<range>" — exit 0 if ver matches range
+    #   3. npx semver@7 [--] <versions...>    — filter valid semver, sort, print
     cat > "$SANDBOX/bin/npx" << 'STUB'
 #!/usr/bin/env bash
 echo "npx $*" >> "$SANDBOX/calls.log"
@@ -52,7 +53,7 @@ shift  # drop "--yes"
 shift  # drop "semver@7"
 if [ "${1:-}" = "--" ]; then shift; fi
 
-# Pattern 3: npx semver@7 [--] "<ver>" — single version validation
+# Pattern 1: npx semver@7 [--] "<ver>" — single version validation
 if [ $# -eq 1 ] && [ "$1" != "-p" ]; then
     if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
         echo "$1"
@@ -88,8 +89,7 @@ if [ "$1" = "-p" ]; then
     exit 1
 fi
 
-# Pattern 1: npx semver@7 [--] <versions...> — filter & sort valid semver
-# Strip end-of-options marker if present
+# Pattern 3: npx semver@7 [--] <versions...> — filter & sort valid semver
 if [ "${1:-}" = "--" ]; then shift; fi
 results=()
 for v in "$@"; do
@@ -124,18 +124,6 @@ STUB
 }
 
 # =============================================================================
-# Idempotency
-# =============================================================================
-
-@test "release: already-released tag exits 0 with message" {
-    echo "abc1234 refs/tags/v0.3.0" > "$SANDBOX/git-ls-remote.out"
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"already exists"* ]]
-}
-
-# =============================================================================
 # Version Extraction
 # =============================================================================
 
@@ -162,6 +150,18 @@ STUB
     run "$RELEASE_SCRIPT"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Released v0.3.0"* ]]
+}
+
+# =============================================================================
+# Idempotency
+# =============================================================================
+
+@test "release: already-released tag exits 0 with message" {
+    echo "abc1234 refs/tags/v0.3.0" > "$SANDBOX/git-ls-remote.out"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"already exists"* ]]
 }
 
 # =============================================================================
@@ -196,6 +196,22 @@ STUB
 
 @test "release: invalid semver (letters) exits 1" {
     echo 'TINT_VERSION="abc"' > "$SANDBOX/tint"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Invalid version"* ]]
+}
+
+@test "release: npx failure during format validation exits 1" {
+    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
+
+    # Replace npx stub with one that crashes
+    cat > "$SANDBOX/bin/npx" << 'STUB'
+#!/usr/bin/env bash
+echo "npx error: command not found" >&2
+exit 127
+STUB
+    chmod +x "$SANDBOX/bin/npx"
 
     run "$RELEASE_SCRIPT"
     [ "$status" -eq 1 ]
@@ -278,27 +294,7 @@ STUB
     [[ "$output" == *"Released v1.0.0"* ]]
 }
 
-# =============================================================================
-# Error Handling
-# =============================================================================
-
-@test "release: npx failure during format validation aborts release" {
-    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
-
-    # Replace npx stub with one that crashes
-    cat > "$SANDBOX/bin/npx" << 'STUB'
-#!/usr/bin/env bash
-echo "npx error: command not found" >&2
-exit 127
-STUB
-    chmod +x "$SANDBOX/bin/npx"
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"Invalid version"* ]]
-}
-
-@test "release: npx failure during ordering check aborts release" {
+@test "release: npx failure during ordering check exits 1" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
