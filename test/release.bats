@@ -136,6 +136,35 @@ STUB
 }
 
 # =============================================================================
+# Version Extraction
+# =============================================================================
+
+@test "release: missing tint file exits 1 with clear error" {
+    rm "$SANDBOX/tint"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"tint file not found"* ]]
+}
+
+@test "release: multiple TINT_VERSION lines exits 1 with clear error" {
+    printf 'TINT_VERSION="0.2.0"\nTINT_VERSION="0.3.0"\n' > "$SANDBOX/tint"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"exactly one TINT_VERSION"* ]]
+}
+
+@test "release: whitespace in version is trimmed" {
+    echo 'TINT_VERSION=" 0.3.0 "' > "$SANDBOX/tint"
+    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Released v0.3.0"* ]]
+}
+
+# =============================================================================
 # Format Validation
 # =============================================================================
 
