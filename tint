@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.2.2"
+TINT_VERSION="0.2.3"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -640,7 +640,11 @@ _tint_main() {
                 echo "usage: tint <color|hex>  or  tint --list" >&2
                 exit 1
             fi
-            tint_pick
+            # local is safe: _tint_ensure_bash re-execs into bash before _tint_main
+            local _tint_hex
+            if _tint_hex=$(tint_pick); then
+                if [ -n "$_tint_hex" ]; then printf '%s\n' "$_tint_hex"; fi
+            fi
             ;;
         -h|--help)
             _tint_usage
