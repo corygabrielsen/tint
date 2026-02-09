@@ -41,15 +41,12 @@ fi
 
 echo "Releasing $tag"
 
-# Create and push tag
-git config user.name "github-actions[bot]"
-git config user.email "github-actions[bot]@users.noreply.github.com"
-git tag "$tag"
-git push origin "$tag"
-
 # Create GitHub release with checksum
+# gh release create creates the tag via the GitHub API — if it fails, neither
+# the tag nor the release exist, so retries start clean (no orphaned tags).
 sha256sum tint > tint.sha256
 gh release create "$tag" \
+    --target "$(git rev-parse HEAD)" \
     --title "$tag" \
     --generate-notes \
     tint tint.sha256
