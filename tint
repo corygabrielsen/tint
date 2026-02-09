@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.2.1"
+TINT_VERSION="0.2.2"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -377,10 +377,14 @@ Error: terminal does not support OSC 11 (background color escape sequences).
 tint uses OSC 11 to get and set the terminal background color.
 Your terminal did not respond to the background color query,
 which means tint cannot preview or apply colors.
-
-Try running: printf '\033]11;?\033\\'
-A supported terminal will echo back the current background color.
 ERRMSG
+        if [ -n "${TMUX:-}" ]; then
+            echo "  Hint: try running: tmux set -g allow-passthrough on" >&2
+        elif [ -n "${SSH_TTY:-}${SSH_CONNECTION:-}" ]; then
+            echo "  Hint: try reconnecting with: ssh -t" >&2
+        fi
+        printf '%s\n' "  Try: printf '\033]11;?\033\\\\'" >&2
+        printf '  A supported terminal will echo back the current background color.\n' >&2
         return 1
     fi
     # Export for _tint_cleanup to restore on signal interruption
