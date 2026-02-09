@@ -3,6 +3,7 @@
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
     PATH="$DIR:$PATH"
+
 }
 
 # Helper to source the library within a test (BATS runs tests in subshells)
@@ -286,7 +287,7 @@ _pick() {
 @test "picker: right then left returns to start" {
     _pick right left enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "" ]  # idx 0 = reset to default (no hex output)
+    [ "$PICK_STDOUT" = "#f0e1d2" ]  # idx 0 = original background (stubbed by pty_helper)
 }
 
 @test "picker: multiple navigations" {
@@ -374,7 +375,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
+    cmd = "source '" + tint_dir + "/tint'; tint_query() { printf '%s' '#f0e1d2'; }; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -410,7 +411,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    cmd = "source '" + tint_dir + "/tint'; tint_query() { printf '%s' '#f0e1d2'; }; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -458,7 +459,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; unset BASHPID; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    cmd = "source '" + tint_dir + "/tint'; tint_query() { printf '%s' '#f0e1d2'; }; unset BASHPID; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)

@@ -18,6 +18,9 @@ import shlex
 import sys
 import time
 
+# Sentinel value for tint_query stub — must not appear in the palette.
+STUB_BG = "#f0e1d2"
+
 KEY_MAP = {
     "right": "\x1b[C",
     "left": "\x1b[D",
@@ -75,7 +78,9 @@ def main():
         tint_path = os.path.join(script_dir, "..", "tint")
         os.execvp("bash", [
             "bash", "-c",
-            f"source {shlex.quote(tint_path)}; set -eu; tint_pick"
+            f"source {shlex.quote(tint_path)};"
+            f" tint_query() {{ printf '%s' '{STUB_BG}'; }};"
+            f" set -eu; tint_pick"
         ])
         # If exec fails
         os._exit(127)
@@ -143,13 +148,15 @@ def main():
         # The picker does: printf '\n' >/dev/tty; then printf '%s' "$hex"
         # So we look for the pattern after the last newline.
 
-        # Actually, let's look for the hex that appears after the last
-        # cursor-show sequence (\x1b[?25h) since _tint_show_cursor is called
-        # right before the return.
+        # Look for the hex after the last cursor-show sequence (\x1b[?25h)
+        # since _tint_show_cursor is called right before the return.
+        # Strip OSC sequences first (\x1b]...\x1b\\ or \x1b]...\x07) so we
+        # don't match hex values inside tint_set's terminal control output.
         show_cursor = "\x1b[?25h"
         cursor_pos = raw.rfind(show_cursor)
         if cursor_pos >= 0:
             after_cursor = raw[cursor_pos + len(show_cursor):]
+            after_cursor = re.sub(r"\x1b\][^\x1b\x07]*(?:\x07|\x1b\\)", "", after_cursor)
             result_match = re.search(r"#[0-9a-fA-F]{6}", after_cursor)
             stdout_result = result_match.group(0) if result_match else ""
         else:
