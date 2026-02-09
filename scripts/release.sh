@@ -2,7 +2,9 @@
 set -euo pipefail
 
 # Extract version from tint script
-version=$(grep '^TINT_VERSION=' tint | cut -d'"' -f2)
+[ -f tint ] || { echo "::error::tint file not found" >&2; exit 1; }
+[ "$(grep -c '^TINT_VERSION=' tint)" -eq 1 ] || { echo "::error::Expected exactly one TINT_VERSION in tint" >&2; exit 1; }
+version=$(grep '^TINT_VERSION=' tint | cut -d'"' -f2 | tr -d '[:space:]')
 tag="v$version"
 
 # Skip if already released
