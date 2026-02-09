@@ -43,6 +43,17 @@ _load_tint() {
     [[ ! "$output" =~ "#282a36" ]]
 }
 
+@test "tint --probe returns ok or unsupported" {
+    # In CI (no real terminal), --probe should fail gracefully.
+    # In a real terminal, it should succeed. Either way, no crash.
+    run tint --probe
+    if [ "$status" -eq 0 ]; then
+        [[ "$output" =~ "OK" ]]
+    else
+        [[ "$output" =~ "UNSUPPORTED" ]]
+    fi
+}
+
 @test "tint random picks a palette color" {
     run tint random
     [ "$status" -eq 0 ]
@@ -190,6 +201,24 @@ INNEREOF
     _load_tint
     run tint_resolve "not-a-color"
     [ "$status" -eq 1 ]
+}
+
+@test "tint_supports_osc11 caches result" {
+    source "$DIR/tint"
+    # First call probes (result depends on environment)
+    tint_supports_osc11 || true
+    # Cache vars should be set
+    [ -n "$_TINT_OSC11_PROBED" ]
+    [ "$_TINT_OSC11_PROBED" = "1" ]
+    # Second call should use cache (no terminal I/O)
+    tint_supports_osc11 || true
+}
+
+@test "tint_supports_osc11 fails without terminal" {
+    source "$DIR/tint"
+    # Detach from controlling terminal
+    run setsid bash -c "source '$DIR/tint' && tint_supports_osc11"
+    [ "$status" -ne 0 ]
 }
 
 @test "tint_resolve rejects invalid hex" {

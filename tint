@@ -285,6 +285,38 @@ tint_supports_color() {
     return 0
 }
 
+# tint_supports_osc11 - Probe whether the terminal actually responds to OSC 11
+#
+# Sends the OSC 11 query (same as tint_query) and checks for a valid response.
+# This is the definitive test: if the terminal responds with rgb:RRRR/GGGG/BBBB,
+# it supports background color manipulation.
+#
+# Uses a cache to avoid repeated terminal I/O:
+#   _TINT_OSC11_PROBED: set after first probe
+#   _TINT_OSC11_SUPPORTED: 0=no, 1=yes (only valid when _TINT_OSC11_PROBED is set)
+#
+# Returns 0 if supported, 1 if not (or can't determine).
+tint_supports_osc11() {
+    # Return cached result if already probed
+    if [ -n "${_TINT_OSC11_PROBED:-}" ]; then
+        return "$_TINT_OSC11_SUPPORTED"
+    fi
+    _TINT_OSC11_PROBED=1
+    _TINT_OSC11_SUPPORTED=1  # assume failure
+
+    # Quick checks first (cheap)
+    if ! tint_supports_color; then
+        return 1
+    fi
+
+    # Actually probe the terminal
+    if _tint_query_raw >/dev/null 2>&1; then
+        _TINT_OSC11_SUPPORTED=0
+        return 0
+    fi
+    return 1
+}
+
 # =============================================================================
 # Interactive Picker
 # =============================================================================
@@ -604,6 +636,7 @@ USAGE
     tint --query          Query current background
     tint --list           List available colors
     tint --names          List names only
+    tint --probe          Check if terminal supports OSC 11
     tint --help           Show this help
     tint --version        Show version
 
@@ -693,6 +726,14 @@ _tint_main() {
         -q|--query)
             tint_query || { echo "Query failed" >&2; exit 1; }
             echo
+            ;;
+        --probe)
+            if tint_supports_osc11; then
+                echo "OK: terminal supports OSC 11 background color"
+            else
+                echo "UNSUPPORTED: terminal does not respond to OSC 11" >&2
+                exit 1
+            fi
             ;;
         -*)
             echo "Unknown option: $1" >&2
