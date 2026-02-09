@@ -190,6 +190,63 @@ INNEREOF
     [ "$status" -eq 1 ]
 }
 
+# Helper: run tint_pick in a PTY with tint_query stubbed to fail.
+# Accepts optional env var exports to simulate tmux/SSH contexts.
+# Usage: _pick_unsupported [env_setup_cmd]
+# Sets: UNSUPPORTED_OUTPUT (captured stderr+stdout)
+_pick_unsupported() {
+    local env_setup="${1:-}"
+    UNSUPPORTED_OUTPUT=$(python3 - "$DIR" "$env_setup" <<'PYEOF'
+import os, sys, time, select
+tint_dir, env_setup = sys.argv[1], sys.argv[2]
+master, slave = os.openpty()
+pid = os.fork()
+if pid == 0:
+    os.setsid(); os.close(master)
+    sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
+    os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
+    if slave > 2: os.close(slave)
+    cmd_prefix = (env_setup + '; ') if env_setup else ''
+    cmd = cmd_prefix + "source '" + tint_dir + "/tint'; tint_query() { return 1; }; tint_pick 2>&1; echo EXIT:$?"
+    os.execvp('bash', ['bash', '-c', cmd])
+else:
+    os.close(slave)
+    out = b''
+    child_exited = False
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if not child_exited:
+            try:
+                wpid, _ = os.waitpid(pid, os.WNOHANG)
+                if wpid == pid: child_exited = True
+            except ChildProcessError: child_exited = True
+        r, _, _ = select.select([master], [], [], 0.1)
+        if r:
+            try:
+                c = os.read(master, 4096)
+                if not c: break
+                out += c
+            except OSError: break
+        elif child_exited:
+            break
+    print(out.decode('utf-8', 'replace'))
+PYEOF
+)
+}
+
+@test "tint_pick fails with diagnostic when OSC 11 unsupported" {
+    _pick_unsupported
+    [[ "$UNSUPPORTED_OUTPUT" =~ "OSC 11" ]]
+    [[ "$UNSUPPORTED_OUTPUT" =~ "did not respond" ]]
+    [[ "$UNSUPPORTED_OUTPUT" =~ "EXIT:1" ]]
+}
+
+@test "_pick_unsupported env_setup without trailing semicolon" {
+    # Regression: env_setup without '; ' suffix must not break command parsing
+    _pick_unsupported "export TINT_TEST_MARKER=1"
+    [[ "$UNSUPPORTED_OUTPUT" =~ "EXIT:1" ]]
+}
+
 @test "tint_resolve rejects invalid hex" {
     _load_tint
     run tint_resolve "#12345"  # 5 digits
