@@ -190,6 +190,78 @@ INNEREOF
     [ "$status" -eq 1 ]
 }
 
+@test "tint_resolve rejects invalid hex" {
+    _load_tint
+    run tint_resolve "#12345"  # 5 digits
+    [ "$status" -eq 1 ]
+}
+
+# =============================================================================
+# Palette
+# =============================================================================
+
+@test "palette has expected colors" {
+    # Source directly - sourcing via function scopes the variable to that function
+    source "$DIR/tint"
+    [[ "$TINT_PALETTE" =~ "vscode:#1e1e1e" ]]
+    [[ "$TINT_PALETTE" =~ "dracula:#282a36" ]]
+    [[ "$TINT_PALETTE" =~ "nord:#2e3440" ]]
+}
+
+@test "palette rejects hyphen-prefixed names" {
+    # CR-002: names starting with - would be confused with CLI flags
+    source "$DIR/tint"
+    export TINT_PALETTE=$'-badname:#abcdef\ngood:#123456'
+    source "$DIR/tint"
+    # Only the valid name should survive
+    [ "$(_tint_palette_count)" -eq 1 ]
+    [ "$(_tint_palette_get 1)" = "good:#123456" ]
+}
+
+@test "TINT_PALETTE env overrides default" {
+    # Set env before sourcing so _tint_load_palette sees it as a string
+    export TINT_PALETTE=$'custom:#abcdef'
+    source "$DIR/tint"
+
+    [ "$(_tint_palette_count)" -eq 1 ]
+    [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
+}
+
+# =============================================================================
+# Code Invariants
+# =============================================================================
+
+@test "_tint_query_raw is defined as subshell function" {
+    # _tint_query_raw must use ( ) not { } so trap/stty changes are isolated.
+    # Match the function definition: _tint_query_raw() (
+    grep -qE '_tint_query_raw\(\)[[:space:]]*\(' "$DIR/tint" || {
+        echo "_tint_query_raw is not a subshell function"
+        return 1
+    }
+}
+
+@test "tint_query has no bash-specific trap branching" {
+    # With subshell isolation, there should be no BASH_VERSION checks or
+    # trap -p / eval saved trap logic in the query functions.
+    # Note: can't use `! grep` in bats — set -e is suppressed by `!`,
+    # so failures would be silently ignored.
+    local query_section
+    query_section=$(grep -A30 '_tint_query_raw' "$DIR/tint")
+    if echo "$query_section" | grep -q 'BASH_VERSION'; then
+        echo "Found BASH_VERSION in _tint_query_raw"; return 1
+    fi
+    if echo "$query_section" | grep -q 'trap -p'; then
+        echo "Found trap -p in _tint_query_raw"; return 1
+    fi
+    if echo "$query_section" | grep -q '_tq_saved_trap'; then
+        echo "Found _tq_saved_trap in _tint_query_raw"; return 1
+    fi
+}
+
+# =============================================================================
+# Picker: OSC 11 Guard
+# =============================================================================
+
 # Helper: run tint_pick in a PTY with tint_query stubbed to fail.
 # Accepts optional env var exports to simulate tmux/SSH contexts.
 # Usage: _pick_unsupported [env_setup_cmd]
@@ -278,76 +350,8 @@ PYEOF
     [[ "$UNSUPPORTED_OUTPUT" == *"033]11;?"* ]]
 }
 
-@test "tint_resolve rejects invalid hex" {
-    _load_tint
-    run tint_resolve "#12345"  # 5 digits
-    [ "$status" -eq 1 ]
-}
-
 # =============================================================================
-# Palette
-# =============================================================================
-
-@test "palette has expected colors" {
-    # Source directly - sourcing via function scopes the variable to that function
-    source "$DIR/tint"
-    [[ "$TINT_PALETTE" =~ "vscode:#1e1e1e" ]]
-    [[ "$TINT_PALETTE" =~ "dracula:#282a36" ]]
-    [[ "$TINT_PALETTE" =~ "nord:#2e3440" ]]
-}
-
-@test "palette rejects hyphen-prefixed names" {
-    # CR-002: names starting with - would be confused with CLI flags
-    source "$DIR/tint"
-    export TINT_PALETTE=$'-badname:#abcdef\ngood:#123456'
-    source "$DIR/tint"
-    # Only the valid name should survive
-    [ "$(_tint_palette_count)" -eq 1 ]
-    [ "$(_tint_palette_get 1)" = "good:#123456" ]
-}
-
-@test "TINT_PALETTE env overrides default" {
-    # Set env before sourcing so _tint_load_palette sees it as a string
-    export TINT_PALETTE=$'custom:#abcdef'
-    source "$DIR/tint"
-
-    [ "$(_tint_palette_count)" -eq 1 ]
-    [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
-}
-
-# =============================================================================
-# Code Invariants
-# =============================================================================
-
-@test "_tint_query_raw is defined as subshell function" {
-    # _tint_query_raw must use ( ) not { } so trap/stty changes are isolated.
-    # Match the function definition: _tint_query_raw() (
-    grep -qE '_tint_query_raw\(\)[[:space:]]*\(' "$DIR/tint" || {
-        echo "_tint_query_raw is not a subshell function"
-        return 1
-    }
-}
-
-@test "tint_query has no bash-specific trap branching" {
-    # With subshell isolation, there should be no BASH_VERSION checks or
-    # trap -p / eval saved trap logic in the query functions.
-    # Note: can't use `! grep` in bats — set -e is suppressed by `!`,
-    # so failures would be silently ignored.
-    local query_section
-    query_section=$(grep -A30 '_tint_query_raw' "$DIR/tint")
-    if echo "$query_section" | grep -q 'BASH_VERSION'; then
-        echo "Found BASH_VERSION in _tint_query_raw"; return 1
-    fi
-    if echo "$query_section" | grep -q 'trap -p'; then
-        echo "Found trap -p in _tint_query_raw"; return 1
-    fi
-    if echo "$query_section" | grep -q '_tq_saved_trap'; then
-        echo "Found _tq_saved_trap in _tint_query_raw"; return 1
-    fi
-}
-
-# =============================================================================
-# Picker
+# Picker: Navigation
 # =============================================================================
 
 # Helper: run tint_pick in a PTY with simulated keystrokes
@@ -410,13 +414,9 @@ _pick() {
     [ "$PICK_STDOUT" = "#1e1e1e" ]
 }
 
-@test "picker tests work from non-repo directory" {
-    # CR-009: pty_helper.py uses source ./tint which assumes cwd is repo root.
-    # Tests should pass even when invoked from a different directory.
-    cd /tmp
-    run bats "$DIR/test/tint.bats" -f "picker: navigate right and select"
-    [ "$status" -eq 0 ]
-}
+# =============================================================================
+# Picker: Shell Guards
+# =============================================================================
 
 @test "tint_pick rejects headless invocation" {
     # tint_pick checks /dev/tty accessibility (not -t 0/-t 1, since stdout
@@ -448,6 +448,10 @@ _pick() {
     [[ "$output" =~ "requires bash" ]]
     [[ ! "$output" =~ "Bad substitution" ]]
 }
+
+# =============================================================================
+# Picker: EXIT Trap
+# =============================================================================
 
 @test "tint_pick preserves caller EXIT trap in direct call" {
     # CR-005/CR-008: tint_pick must restore caller's EXIT trap when called
@@ -573,4 +577,16 @@ PYEOF
     [[ "$clean" =~ HEX:#[0-9a-fA-F]{6} ]]
     # LEAKED must not be embedded in the hex capture
     [[ ! "$clean" =~ HEX:#[0-9a-fA-F]{6}LEAKED ]]
+}
+
+# =============================================================================
+# Picker: Misc
+# =============================================================================
+
+@test "picker tests work from non-repo directory" {
+    # CR-009: pty_helper.py uses source ./tint which assumes cwd is repo root.
+    # Tests should pass even when invoked from a different directory.
+    cd /tmp
+    run bats "$DIR/test/tint.bats" -f "picker: navigate right and select"
+    [ "$status" -eq 0 ]
 }
