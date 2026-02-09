@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.2.4"
+TINT_VERSION="0.2.5"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -291,7 +291,8 @@ _tint_cleanup() {
 
 _tint_render() {
     local idx="$1" default_idx="$2" original_bg="$3" total="$4"
-    local name hex r g b
+    local name hex r g b tw
+    tw=${#total}
 
     _tint_clear_line
 
@@ -317,20 +318,30 @@ _tint_render() {
         r=$(printf '%d' "0x$(echo "$hex" | cut -c2-3)")
         g=$(printf '%d' "0x$(echo "$hex" | cut -c4-5)")
         b=$(printf '%d' "0x$(echo "$hex" | cut -c6-7)")
-        printf '  \e[48;2;%d;%d;%dm        \e[0m  %-12s %-9s [%d/%d]' \
-            "$r" "$g" "$b" "$name" "$hex" "$((idx + 1))" "$total" >/dev/tty
+        # local is safe: _tint_render only runs inside tint_pick (bash guaranteed)
+        local fg marker label
+        if [ $(( (r * 299 + g * 587 + b * 114) / 1000 )) -gt 128 ]; then
+            fg="30"
+        else
+            fg="97"
+        fi
+        marker="  "
+        if [ "$idx" -eq "$default_idx" ] || { [ "$idx" -eq 0 ] && [ "$default_idx" -gt 0 ]; }; then marker="* "; fi
+        label=$(printf '[%*d/%d]    #%s    %s' "$tw" "$((idx + 1))" "$total" "${hex#\#}" "$name")
+        printf '%s\e[%s;48;2;%d;%d;%dm %-41s\e[0m' \
+            "$marker" "$fg" "$r" "$g" "$b" "$label" >/dev/tty
     else
         # Original background unknown (OSC 11 query failed)
         if [ "$idx" -eq 0 ] && [ "${_TINT_PREVIEWED:-0}" -eq 1 ]; then
             # Reset to show what "reset to default" means
             tint_reset
         fi
-        # Don't change background for palette entries - preserve whatever the user had
-        printf '  \e[2m- - - -\e[0m  %-12s %-9s [%d/%d]' \
-            "$name" "(unknown)" "$((idx + 1))" "$total" >/dev/tty
+        local marker label
+        marker="  "
+        if [ "$idx" -eq "$default_idx" ] || { [ "$idx" -eq 0 ] && [ "$default_idx" -gt 0 ]; }; then marker="* "; fi
+        label=$(printf '[%*d/%d]    - - - -    %s' "$tw" "$((idx + 1))" "$total" "$name")
+        printf '%s\e[2m%-41s\e[0m' "$marker" "$label" >/dev/tty
     fi
-
-    if [ "$idx" -eq "$default_idx" ]; then printf ' *' >/dev/tty; fi
 }
 
 # tint_pick [current] - Interactive picker
