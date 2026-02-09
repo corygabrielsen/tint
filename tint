@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.2.0"
+TINT_VERSION="0.2.1"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -368,8 +368,21 @@ tint_pick() {
     local total=$(( palette_count + 1 ))
     local max=$(( total - 1 ))
 
-    # Try terminal query first; fallback to resolving current to hex
-    original_bg=$(tint_query) || original_bg=$(tint_resolve "${current:-}" 2>/dev/null) || original_bg=""
+    # Query current background. If this fails, the terminal doesn't support
+    # OSC 11 and tint can't work — fail fast with a diagnostic message.
+    if ! original_bg=$(tint_query); then
+        cat >&2 <<'ERRMSG'
+Error: terminal does not support OSC 11 (background color escape sequences).
+
+tint uses OSC 11 to get and set the terminal background color.
+Your terminal did not respond to the background color query,
+which means tint cannot preview or apply colors.
+
+Try running: printf '\033]11;?\033\\'
+A supported terminal will echo back the current background color.
+ERRMSG
+        return 1
+    fi
     # Export for _tint_cleanup to restore on signal interruption
     _TINT_ORIGINAL_BG="$original_bg"
     # Track whether we've previewed any colors (for smart cancel behavior)
