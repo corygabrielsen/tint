@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.3.0"
+TINT_VERSION="0.4.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -715,6 +715,7 @@ tint - terminal background color picker
 USAGE
     tint                  Interactive picker with live preview
     tint <name|hex>       Set background directly
+    tint show <name|hex>  Preview color swatch without setting
     tint random           Pick a random color
     tint --reset          Reset to terminal default
     tint --query          Query current background
@@ -732,6 +733,7 @@ INTERACTIVE CONTROLS
 EXAMPLES
     tint dracula          Set by name
     tint "#282a36"        Set by hex code
+    tint show nord        Preview without setting
     tint random           Surprise me
     tint none             Reset and disable
     tint --list           Show all available colors
@@ -754,8 +756,9 @@ _tint_main() {
         echo "error: color name cannot be empty" >&2
         exit 1
     fi
-    # Reject extra arguments — all commands take at most one argument
-    if [ $# -gt 1 ]; then
+    # Reject extra arguments — most commands take at most one argument
+    # Exception: "show" takes a second argument (the color name/hex)
+    if [ $# -gt 1 ] && [ "$1" != "show" ]; then
         echo "error: unexpected argument: $2" >&2
         echo "Run 'tint --help' for usage" >&2
         exit 1
@@ -812,6 +815,30 @@ _tint_main() {
             echo "Unknown option: $1" >&2
             echo "Run 'tint --help' for usage" >&2
             exit 1
+            ;;
+        show)
+            if [ -z "${2:-}" ]; then
+                echo "error: missing color name or hex" >&2
+                echo "usage: tint show <name|hex>" >&2
+                exit 1
+            fi
+            # shellcheck disable=SC3043
+            local show_hex show_r show_g show_b
+            if show_hex=$(tint_resolve "$2"); then
+                if [ -z "$show_hex" ]; then
+                    echo "(default)" >&2
+                    exit 0
+                fi
+                show_hex="${show_hex#\#}"
+                # shellcheck disable=SC2046
+                set -- $(_tint_hex_to_rgb "$show_hex")
+                show_r=$1 show_g=$2 show_b=$3
+                printf '\033[48;2;%d;%d;%dm    \033[0m  #%s\n' "$show_r" "$show_g" "$show_b" "$show_hex"
+            else
+                echo "Unknown color: $2" >&2
+                echo "Run 'tint --list' for available colors" >&2
+                exit 1
+            fi
             ;;
         random)
             local count entry hex name idx
