@@ -439,6 +439,21 @@ _pick() {
     [ "$PICK_STDOUT" = "" ]
 }
 
+@test "picker: search finds color by name" {
+    # Type /drac + Enter to search for dracula, then Enter to select
+    _pick / d r a c enter enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#282a36" ]  # dracula
+}
+
+@test "picker: search escape returns to navigation" {
+    # Search, escape out, then select whatever we're on
+    _pick / n o r escape enter
+    [ "$PICK_EXIT" -eq 0 ]
+    # Should have jumped to nord during search, stayed there after escape
+    [ "$PICK_STDOUT" = "#2e3440" ]  # nord
+}
+
 @test "picker: set -e does not kill script during navigation" {
     # Regression test: _tint_render used [ test ] && cmd which returns 1
     # under set -e when the test is false, killing the script.

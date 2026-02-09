@@ -39,7 +39,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.5.0"
+TINT_VERSION="0.6.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -591,7 +591,7 @@ ERRMSG
         _tint_esc_timeout=1
         _tint_read_timeout=1
     fi
-    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   /: Search   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
     _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible"
 
     while true; do
@@ -656,6 +656,79 @@ ERRMSG
                 ;;
             h|k) idx=$(( idx > 0 ? idx - 1 : max )); _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible" ;;
             l|j) idx=$(( idx < max ? idx + 1 : 0 )); _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible" ;;
+            /)
+                # Search mode: type to filter palette entries by substring.
+                # Shows search prompt below the scroll indicator line.
+                local search="" search_key match_idx match_count
+                local _tint_bs_del _tint_bs_ctrl
+                _tint_bs_del=$(printf '\177')   # DEL (0x7F) - most terminals
+                _tint_bs_ctrl=$(printf '\010')  # BS (0x08) - some terminals
+                # Print search line below scroll indicator
+                printf '\n' >/dev/tty
+                printf '\r\e[K  \e[2m/\e[0m' >/dev/tty
+                while true; do
+                    if ! IFS= read -rsn1 search_key </dev/tty; then
+                        break
+                    fi
+                    case "$search_key" in
+                        "$_TINT_ESC")
+                            # Escape: exit search, keep current position
+                            break
+                            ;;
+                        "")
+                            # Enter: exit search at current match
+                            break
+                            ;;
+                        "$_tint_bs_del"|"$_tint_bs_ctrl")
+                            # Backspace: remove last char
+                            if [ -n "$search" ]; then
+                                search="${search%?}"
+                            fi
+                            ;;
+                        [a-zA-Z0-9_-])
+                            search="${search}${search_key}"
+                            ;;
+                        *)
+                            continue
+                            ;;
+                    esac
+                    # Find first matching palette entry (using pre-loaded arrays)
+                    if [ -n "$search" ]; then
+                        match_idx=0
+                        match_count=0
+                        i=1
+                        while [ "$i" -le "$palette_count" ]; do
+                            # shellcheck disable=SC3054
+                            case "${_tint_names[$i]}" in
+                                *"$search"*)
+                                    match_count=$((match_count + 1))
+                                    if [ "$match_idx" -eq 0 ]; then
+                                        match_idx=$i
+                                    fi
+                                    ;;
+                            esac
+                            i=$((i + 1))
+                        done
+                        if [ "$match_idx" -gt 0 ]; then
+                            idx=$match_idx
+                            # Move up to scroll indicator line, redraw picker, move back to search
+                            printf '\e[A' >/dev/tty
+                            _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible"
+                            printf '\n' >/dev/tty
+                            printf '\r\e[K  \e[2m/\e[0m\e[32m%s\e[0m \e[2m(%d match' "$search" "$match_count" >/dev/tty
+                            if [ "$match_count" -ne 1 ]; then printf 'es' >/dev/tty; fi
+                            printf ')\e[0m' >/dev/tty
+                        else
+                            printf '\r\e[K  \e[2m/\e[0m\e[31m%s\e[0m \e[2m(no matches)\e[0m' "$search" >/dev/tty
+                        fi
+                    else
+                        printf '\r\e[K  \e[2m/\e[0m' >/dev/tty
+                    fi
+                done
+                # Clear search line and move back up to scroll indicator line
+                printf '\r\e[K\e[A' >/dev/tty
+                _tint_render_all "$idx" "$default_idx" "$original_bg" "$total" "$visible"
+                ;;
             q)
                 _tint_erase_picker
                 if [ -n "$original_bg" ]; then
