@@ -203,6 +203,61 @@ INNEREOF
     [ "$status" -eq 1 ]
 }
 
+@test "tint_save writes color to file" {
+    source "$DIR/tint"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    TINT_CONFIG_DIR="$tmpdir/tint"
+    TINT_COLOR_FILE="$tmpdir/tint/color"
+    tint_save "#282a36"
+    [ -f "$tmpdir/tint/color" ]
+    [ "$(cat "$tmpdir/tint/color")" = "#282a36" ]
+    rm -rf "$tmpdir"
+}
+
+@test "tint_saved reads saved color" {
+    source "$DIR/tint"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    TINT_COLOR_FILE="$tmpdir/color"
+    printf '#1e1e1e\n' > "$tmpdir/color"
+    local result
+    result=$(tint_saved)
+    [ "$result" = "#1e1e1e" ]
+    rm -rf "$tmpdir"
+}
+
+@test "tint_saved fails when no file exists" {
+    source "$DIR/tint"
+    TINT_COLOR_FILE="/nonexistent/path/color"
+    run tint_saved
+    [ "$status" -eq 1 ]
+}
+
+@test "tint --save and --restore round-trip" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    export TINT_CONFIG_DIR="$tmpdir/tint"
+    export TINT_COLOR_FILE="$tmpdir/tint/color"
+    run tint --save dracula
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "#282a36" ]]
+    [ -f "$tmpdir/tint/color" ]
+    # --restore applies but we can't check terminal state in CI;
+    # just verify it reads the file without error
+    run tint --restore
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "#282a36" ]]
+    rm -rf "$tmpdir"
+}
+
+@test "tint --restore fails with no saved color" {
+    export TINT_COLOR_FILE="/nonexistent/path/color"
+    run tint --restore
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "No saved color" ]]
+}
+
 @test "tint_supports_osc11 caches result" {
     source "$DIR/tint"
     # First call probes (result depends on environment)

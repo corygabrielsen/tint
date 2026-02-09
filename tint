@@ -21,6 +21,8 @@
 #   tint                  Interactive picker with live preview
 #   tint <name|hex>       Set directly (e.g., "dracula", "#282a36")
 #   tint random           Pick a random color
+#   tint --save [color]   Save color (default: current) to ~/.config/tint/color
+#   tint --restore        Apply saved color
 #   tint --reset          Reset to terminal default
 #   tint --list           List available colors
 #   tint --help           Show help
@@ -313,6 +315,52 @@ tint_supports_osc11() {
     if _tint_query_raw >/dev/null 2>&1; then
         _TINT_OSC11_SUPPORTED=0
         return 0
+    fi
+    return 1
+}
+
+# =============================================================================
+# Persistence
+# =============================================================================
+
+# Default save location
+TINT_CONFIG_DIR="${TINT_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/tint}"
+TINT_COLOR_FILE="${TINT_COLOR_FILE:-$TINT_CONFIG_DIR/color}"
+
+# tint_save <hex> - Save a color to the config file
+tint_save() {
+    local hex="$1"
+    if [ -z "$hex" ]; then
+        printf 'tint_save: missing hex argument\n' >&2
+        return 1
+    fi
+    mkdir -p "$TINT_CONFIG_DIR"
+    printf '%s\n' "$hex" > "$TINT_COLOR_FILE"
+}
+
+# tint_restore - Apply saved color (if any)
+# Returns 0 if a color was applied, 1 if no saved color exists.
+tint_restore() {
+    if [ -f "$TINT_COLOR_FILE" ] && [ -r "$TINT_COLOR_FILE" ]; then
+        local saved
+        saved=$(tr -d '[:space:]' < "$TINT_COLOR_FILE" 2>/dev/null) || return 1
+        if [ -n "$saved" ]; then
+            tint_set "$saved"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# tint_saved - Print saved color (if any)
+tint_saved() {
+    if [ -f "$TINT_COLOR_FILE" ] && [ -r "$TINT_COLOR_FILE" ]; then
+        local saved
+        saved=$(tr -d '[:space:]' < "$TINT_COLOR_FILE" 2>/dev/null) || return 1
+        if [ -n "$saved" ]; then
+            printf '%s' "$saved"
+            return 0
+        fi
     fi
     return 1
 }
@@ -632,6 +680,8 @@ USAGE
     tint <name|hex>       Set background directly
     tint show <name|hex>  Preview color swatch without setting
     tint random           Pick a random color
+    tint --save [color]   Save color for persistence
+    tint --restore        Apply saved color
     tint --reset          Reset to terminal default
     tint --query          Query current background
     tint --list           List available colors
@@ -645,6 +695,13 @@ INTERACTIVE CONTROLS
     ↑/↓  k/j              Navigate colors
     Enter                 Select color
     Esc  q                Cancel (restore original)
+
+PERSISTENCE
+    tint --save dracula   Save a color
+    tint --restore        Apply saved color on shell startup
+
+    Add to ~/.bashrc or ~/.zshrc:
+        eval "$(command -v tint >/dev/null && tint --restore 2>/dev/null)"
 
 EXAMPLES
     tint dracula          Set by name
@@ -673,8 +730,8 @@ _tint_main() {
         exit 1
     fi
     # Reject extra arguments — most commands take at most one argument
-    # Exception: "show" takes a second argument (the color name/hex)
-    if [ $# -gt 1 ] && [ "$1" != "show" ]; then
+    # Exceptions: "show" and "--save" take a second argument
+    if [ $# -gt 1 ] && [ "$1" != "show" ] && [ "$1" != "--save" ]; then
         echo "error: unexpected argument: $2" >&2
         echo "Run 'tint --help' for usage" >&2
         exit 1
@@ -732,6 +789,32 @@ _tint_main() {
                 echo "OK: terminal supports OSC 11 background color"
             else
                 echo "UNSUPPORTED: terminal does not respond to OSC 11" >&2
+                exit 1
+            fi
+            ;;
+        --save)
+            # shellcheck disable=SC3043
+            local save_hex
+            if [ -n "${2:-}" ]; then
+                # Save specified color
+                save_hex=$(tint_resolve "$2") || { echo "Unknown color: $2" >&2; exit 1; }
+            else
+                # Save current terminal color
+                save_hex=$(tint_query) || { echo "Could not query terminal color" >&2; exit 1; }
+            fi
+            if [ -z "$save_hex" ]; then
+                echo "error: no color to save" >&2
+                exit 1
+            fi
+            tint_save "$save_hex"
+            echo "Saved $save_hex to $TINT_COLOR_FILE"
+            ;;
+        --restore)
+            if tint_restore; then
+                echo "Restored $(tint_saved)"
+            else
+                echo "No saved color found" >&2
+                echo "Save one with: tint --save <color>" >&2
                 exit 1
             fi
             ;;
