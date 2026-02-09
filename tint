@@ -23,6 +23,7 @@
 #   tint random           Pick a random color
 #   tint --reset          Reset to terminal default
 #   tint --list           List available colors
+#   tint --completions    Output shell completions (bash/zsh/fish)
 #   tint --help           Show help
 #
 # Library usage:
@@ -38,7 +39,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.4.0"
+TINT_VERSION="0.5.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -705,6 +706,99 @@ ERRMSG
 }
 
 # =============================================================================
+# Shell Completions
+# =============================================================================
+
+_tint_completions_bash() {
+    cat <<'BASH_COMP'
+_tint_completions() {
+    local cur prev names opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]}"
+    prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+    opts="--help --version --list --names --reset --query --completions show random"
+    names=$(tint --names 2>/dev/null)
+
+    case "$prev" in
+        show)
+            COMPREPLY=( $(compgen -W "$names" -- "$cur") )
+            return ;;
+        --completions)
+            COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") )
+            return ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    else
+        COMPREPLY=( $(compgen -W "$names random show" -- "$cur") )
+    fi
+}
+complete -F _tint_completions tint
+BASH_COMP
+}
+
+_tint_completions_zsh() {
+    cat <<'ZSH_COMP'
+#compdef tint
+
+_tint() {
+    local -a commands colors
+    commands=(
+        'show:Preview color swatch without setting'
+        'random:Pick a random color'
+        '--help:Show help'
+        '--version:Show version'
+        '--list:List available colors'
+        '--names:List names only'
+        '--reset:Reset to terminal default'
+        '--query:Query current background'
+        '--completions:Output shell completions'
+    )
+    colors=( ${(f)"$(tint --names 2>/dev/null)"} )
+
+    if (( CURRENT == 2 )); then
+        _describe 'command' commands
+        _describe 'color' colors
+    elif (( CURRENT == 3 )); then
+        case "${words[2]}" in
+            show)
+                _describe 'color' colors ;;
+            --completions)
+                _values 'shell' bash zsh fish ;;
+        esac
+    fi
+}
+
+_tint "$@"
+ZSH_COMP
+}
+
+_tint_completions_fish() {
+    cat <<'FISH_COMP'
+# Fish completions for tint
+complete -c tint -x
+
+# Options
+complete -c tint -l help -d 'Show help'
+complete -c tint -l version -d 'Show version'
+complete -c tint -l list -d 'List available colors'
+complete -c tint -l names -d 'List names only'
+complete -c tint -l reset -d 'Reset to terminal default'
+complete -c tint -l query -d 'Query current background'
+complete -c tint -l completions -d 'Output shell completions' -xa 'bash zsh fish'
+
+# Subcommands
+complete -c tint -a 'show' -d 'Preview color swatch'
+complete -c tint -a 'random' -d 'Pick a random color'
+
+# Color names (dynamic)
+complete -c tint -a '(tint --names 2>/dev/null)' -d 'Color name'
+FISH_COMP
+}
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -721,6 +815,7 @@ USAGE
     tint --query          Query current background
     tint --list           List available colors
     tint --names          List names only
+    tint --completions    Output shell completions (bash/zsh/fish)
     tint --help           Show this help
     tint --version        Show version
 
@@ -757,8 +852,8 @@ _tint_main() {
         exit 1
     fi
     # Reject extra arguments — most commands take at most one argument
-    # Exception: "show" takes a second argument (the color name/hex)
-    if [ $# -gt 1 ] && [ "$1" != "show" ]; then
+    # Exceptions: "show" and "--completions" take a second argument
+    if [ $# -gt 1 ] && [ "$1" != "show" ] && [ "$1" != "--completions" ]; then
         echo "error: unexpected argument: $2" >&2
         echo "Run 'tint --help' for usage" >&2
         exit 1
@@ -810,6 +905,18 @@ _tint_main() {
         -q|--query)
             tint_query || { echo "Query failed" >&2; exit 1; }
             echo
+            ;;
+        --completions)
+            case "${2:-bash}" in
+                bash) _tint_completions_bash ;;
+                zsh)  _tint_completions_zsh ;;
+                fish) _tint_completions_fish ;;
+                *)
+                    echo "Unknown shell: $2" >&2
+                    echo "Supported: bash, zsh, fish" >&2
+                    exit 1
+                    ;;
+            esac
             ;;
         -*)
             echo "Unknown option: $1" >&2

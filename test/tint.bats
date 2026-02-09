@@ -43,6 +43,37 @@ _load_tint() {
     [[ ! "$output" =~ "#282a36" ]]
 }
 
+@test "tint --completions bash outputs bash completion" {
+    run tint --completions bash
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "complete -F" ]]
+    [[ "$output" =~ "_tint_completions" ]]
+}
+
+@test "tint --completions zsh outputs zsh completion" {
+    run tint --completions zsh
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "#compdef tint" ]]
+}
+
+@test "tint --completions fish outputs fish completion" {
+    run tint --completions fish
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "complete -c tint" ]]
+}
+
+@test "tint --completions unknown fails" {
+    run tint --completions powershell
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Unknown shell" ]]
+}
+
+@test "tint --completions defaults to bash" {
+    run tint --completions
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "complete -F" ]]
+}
+
 @test "tint random picks a palette color" {
     run tint random
     [ "$status" -eq 0 ]
