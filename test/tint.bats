@@ -274,8 +274,8 @@ PYEOF
     _pick_unsupported "unset TMUX SSH_TTY SSH_CONNECTION"
     [[ ! "$UNSUPPORTED_OUTPUT" =~ "Hint:" ]]
     [[ "$UNSUPPORTED_OUTPUT" =~ "OSC 11" ]]
-    [[ "$UNSUPPORTED_OUTPUT" =~ "Try: printf" ]]
-    [[ "$UNSUPPORTED_OUTPUT" =~ "033]11;?" ]]
+    # Validate the exact Try: printf command including proper escaping
+    [[ "$UNSUPPORTED_OUTPUT" =~ "Try: printf '\\033]11;?\\033\\\\'" ]]
 }
 
 @test "tint_resolve rejects invalid hex" {
