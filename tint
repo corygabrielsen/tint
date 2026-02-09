@@ -147,9 +147,23 @@ tint_resolve() {
     tint_lookup "$input" || return 1
 }
 
-# tint_list - Print all "name:#hex" entries
+# _tint_hex_to_rgb <hex> - Convert 6-digit hex to "r g b" (POSIX-safe)
+_tint_hex_to_rgb() {
+    local hex="${1#\#}"
+    printf '%d %d %d' "0x${hex%????}" "0x$(echo "$hex" | cut -c3-4)" "0x${hex#????}"
+}
+
+# tint_list - Print all "name:#hex" entries with color swatches
 tint_list() {
-    printf '%s\n' "$TINT_PALETTE"
+    local entry name hex r g b
+    printf '%s\n' "$TINT_PALETTE" | while IFS= read -r entry; do
+        name="${entry%%:*}"
+        hex="${entry#*:#}"
+        # shellcheck disable=SC2046
+        set -- $(_tint_hex_to_rgb "$hex")
+        r=$1 g=$2 b=$3
+        printf '\033[48;2;%d;%d;%dm  \033[0m %-16s #%s\n' "$r" "$g" "$b" "$name" "$hex"
+    done
 }
 
 # tint_list_names - Print color names only
