@@ -367,7 +367,7 @@ _pick() {
 @test "picker: navigate right and select" {
     _pick right enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (first palette entry)
+    [ "$PICK_STDOUT" = "#000000" ]  # black (first palette entry)
 }
 
 @test "picker: navigate left wraps to last entry" {
@@ -385,13 +385,13 @@ _pick() {
 @test "picker: multiple navigations" {
     _pick right right right enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#2e3440" ]  # nord (third palette entry)
+    [ "$PICK_STDOUT" = "#282a36" ]  # dracula (third palette entry)
 }
 
 @test "picker: vim keys work" {
     _pick l l enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#282a36" ]  # dracula (second palette entry)
+    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
 }
 
 @test "picker: cancel with escape" {
@@ -411,7 +411,7 @@ _pick() {
     # under set -e when the test is false, killing the script.
     _pick right enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1e1e1e" ]
+    [ "$PICK_STDOUT" = "#000000" ]
 }
 
 # =============================================================================
