@@ -7,6 +7,21 @@ Terminal background color picker with live preview.
   ████████  dracula      #282a36   [3/29] *
 ```
 
+## Install
+
+```bash
+curl -fsSL https://github.com/corygabrielsen/tint/releases/latest/download/tint \
+  -o ~/.local/bin/tint && chmod +x ~/.local/bin/tint
+```
+
+Make sure `~/.local/bin` is in your `PATH`.
+
+Verify:
+
+```bash
+tint --version
+```
+
 ## Usage
 
 ```bash
