@@ -7,8 +7,12 @@
 Terminal background color picker with live preview.
 
 ```
-  ←/→ Navigate   Enter: Select   Esc: Cancel
-  ████████  dracula      #282a36   [3/29] *
+  ↑/↓ Navigate   Enter: Select   Esc: Cancel
+*  1.    - - - -    (unchanged)
+>  2.    #000000    black
+   3.    #1e1e1e    vscode
+   4.    #282a36    dracula
+   ↓ 25 more
 ```
 
 ## Install
@@ -36,14 +40,15 @@ tint random           # Pick a random color
 tint --reset          # Reset to terminal default
 tint --query          # Query current background
 tint --list           # List available colors
+tint --names          # List names only
 ```
 
 ### Interactive Controls
 
 | Key | Action |
 |-----|--------|
-| `←` `→` `h` `l` | Navigate colors |
-| `↑` `↓` `k` `j` | Navigate colors |
+| `↑` `↓` `k` `j` | Navigate list |
+| `←` `→` `h` `l` | Navigate list (alternate) |
 | `Enter` | Select color |
 | `Esc` `q` | Cancel (restore original) |
 
@@ -95,6 +100,8 @@ tint_reset              # Reset to default
 tint_resolve "dracula"  # Resolve name → #282a36
 tint_lookup "dracula"   # Look up in palette → #282a36
 tint_list               # Print all palette entries
+tint_list_names         # Print color names only
+tint_supports_color     # Check if terminal supports OSC colors
 tint_pick "$current"    # Interactive picker → selected hex
 ```
 
