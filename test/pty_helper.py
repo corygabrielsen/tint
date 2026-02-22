@@ -31,7 +31,7 @@ KEY_MAP = {
 }
 
 # Delay between keystrokes (seconds).
-# Escape key needs extra delay so bash's read -t 0.01 can timeout
+# Escape key needs extra delay so bash's read -t timeout can fire
 # and distinguish a bare Escape from the start of an arrow sequence.
 KEY_DELAY = 0.05
 ESCAPE_DELAY = 0.15
@@ -80,6 +80,14 @@ def main():
             "bash", "-c",
             f"source {shlex.quote(tint_path)};"
             f" tint_query() {{ printf '%s' '{STUB_BG}'; }};"
+            # EXIT trap checks stty echo state after tint_pick returns.
+            # Runs regardless of exit code, so set -e cancels still report.
+            f" trap '"
+            f"  if stty -a </dev/tty 2>/dev/null | grep -qw -- -echo;"
+            f"  then printf STTY_ECHO:off\\\\n;"
+            f"  else printf STTY_ECHO:on\\\\n;"
+            f"  fi"
+            f" ' EXIT;"
             f" set -eu; tint_pick"
         ])
         # If exec fails
@@ -87,6 +95,29 @@ def main():
     else:
         # Parent: feed keys and capture output
         os.close(slave_fd)
+
+        # Drain PTY output continuously in a background thread to prevent
+        # backpressure deadlocks when the child writes faster than we read
+        # (e.g., full-frame redraws during scroll events).
+        import threading
+        output_chunks = []
+        drain_done = threading.Event()
+
+        def drain_output():
+            while not drain_done.is_set():
+                try:
+                    ready, _, _ = select.select([master_fd], [], [], 0.05)
+                    if ready:
+                        chunk = os.read(master_fd, 65536)
+                        if chunk:
+                            output_chunks.append(chunk)
+                        else:
+                            break
+                except OSError:
+                    break
+
+        drain_thread = threading.Thread(target=drain_output, daemon=True)
+        drain_thread.start()
 
         # Wait for the picker to render initial state
         time.sleep(0.3)
@@ -106,20 +137,12 @@ def main():
         # Compatible with Python 3.8+ (os.waitstatus_to_exitcode requires 3.9)
         exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -os.WTERMSIG(status)
 
-        # Read any remaining output
-        output = b""
-        while True:
-            ready, _, _ = select.select([master_fd], [], [], 0.1)
-            if not ready:
-                break
-            try:
-                chunk = os.read(master_fd, 4096)
-                if not chunk:
-                    break
-                output += chunk
-            except OSError:
-                break
+        # Let drain thread collect remaining output, then stop it
+        time.sleep(0.1)
+        drain_done.set()
+        drain_thread.join(timeout=1.0)
 
+        output = b"".join(output_chunks)
         os.close(master_fd)
 
         # The output contains both /dev/tty rendering (escape codes, etc.)
@@ -149,7 +172,7 @@ def main():
         # So we look for the pattern after the last newline.
 
         # Look for the hex after the last cursor-show sequence (\x1b[?25h)
-        # since _tint_show_cursor is called right before the return.
+        # since _tint_teardown shows the cursor right before the return.
         # Strip OSC sequences first (\x1b]...\x1b\\ or \x1b]...\x07) so we
         # don't match hex values inside tint_set's terminal control output.
         show_cursor = "\x1b[?25h"
@@ -162,8 +185,13 @@ def main():
         else:
             stdout_result = ""
 
+        # Check stty echo state from EXIT trap output
+        stty_match = re.search(r"STTY_ECHO:(on|off)", raw)
+        stty_echo = stty_match.group(1) if stty_match else "unknown"
+
         print(f"exit:{exit_code}")
         print(f"stdout:{stdout_result}")
+        print(f"stty_echo:{stty_echo}")
 
 
 if __name__ == "__main__":

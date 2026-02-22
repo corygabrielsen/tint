@@ -61,8 +61,9 @@ _load_tint() {
 }
 
 @test "tint works via differently-named symlink" {
-    # Regression: POSIX fallback in _tint_is_main only matched basename "tint",
-    # so symlinks or renamed copies silently did nothing.
+    # _tint_is_main's POSIX fallback checks the script content (grep for the
+    # unique header URL) rather than the filename, so symlinks and renamed
+    # copies are recognized as tint and correctly enter _tint_main.
     tmpdir=$(mktemp -d)
     ln -s "$DIR/tint" "$tmpdir/my-bg-picker"
     run "$tmpdir/my-bg-picker" --version
@@ -76,8 +77,9 @@ _load_tint() {
 # =============================================================================
 
 @test "tint sourced from POSIX script does not re-exec caller" {
-    # Regression: POSIX fallback must not trigger _tint_main when sourced
-    # from a #!/bin/sh script (where $0 is the calling script, not a shell).
+    # When sourced from a #!/bin/sh script, $0 is the calling script, not
+    # a shell. The POSIX fallback must not treat the caller as an executed
+    # tint invocation — only the tint script itself contains the header URL.
     tmpdir=$(mktemp -d)
     cat > "$tmpdir/caller.sh" << INNEREOF
 #!/bin/sh
@@ -209,7 +211,7 @@ INNEREOF
 }
 
 @test "palette rejects hyphen-prefixed names" {
-    # CR-002: names starting with - would be confused with CLI flags
+    # Names starting with - would be confused with CLI flags by cut/sed/grep
     source "$DIR/tint"
     export TINT_PALETTE=$'-badname:#abcdef\ngood:#123456'
     source "$DIR/tint"
@@ -225,6 +227,23 @@ INNEREOF
 
     [ "$(_tint_palette_count)" -eq 1 ]
     [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
+}
+
+@test "empty palette does not crash _tint_load_arrays" {
+    # When TINT_PALETTE has no valid name:#hex entries (e.g., 'invalid'),
+    # _tint_load_arrays must skip malformed lines instead of crashing on
+    # arithmetic expansion with empty hex (16#${hex:1:2}).
+    export TINT_PALETTE='invalid'
+    source "$DIR/tint"
+    run bash -c "source '$DIR/tint'; export TINT_PALETTE='invalid'; _tint_load_arrays"
+    [ "$status" -eq 0 ]
+}
+
+@test "malformed hex does not crash _tint_load_arrays" {
+    # Truncated hex like 'bad:#12' bypasses the empty check but crashes
+    # on 16#${hex:5:2} with empty substring. Guard must validate full #RRGGBB.
+    run bash -c "source '$DIR/tint'; export TINT_PALETTE='bad:#12'; _tint_load_arrays"
+    [ "$status" -eq 0 ]
 }
 
 # =============================================================================
@@ -314,7 +333,7 @@ PYEOF
 }
 
 @test "_pick_unsupported env_setup without trailing semicolon" {
-    # Regression: env_setup without '; ' suffix must not break command parsing
+    # env_setup without a trailing '; ' must not break the shell command string
     _pick_unsupported "export TINT_TEST_MARKER=1"
     [[ "$UNSUPPORTED_OUTPUT" =~ "EXIT:1" ]]
 }
@@ -362,54 +381,149 @@ _pick() {
     result=$(python3 "$DIR/test/pty_helper.py" "$@" 2>/dev/null)
     PICK_EXIT=$(echo "$result" | grep '^exit:' | cut -d: -f2)
     PICK_STDOUT=$(echo "$result" | grep '^stdout:' | cut -d: -f2-)
+    PICK_STTY_ECHO=$(echo "$result" | grep '^stty_echo:' | cut -d: -f2)
 }
 
-@test "picker: navigate right and select" {
-    _pick right enter
+@test "picker: navigate down and select" {
+    _pick down enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#000000" ]  # black (first palette entry)
 }
 
-@test "picker: navigate left wraps to last entry" {
-    _pick left enter
+@test "picker: up wraps to last entry" {
+    _pick up enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#300a24" ]  # ubuntu (last palette entry)
 }
 
-@test "picker: right then left returns to start" {
-    _pick right left enter
+@test "picker: down then up returns to start" {
+    _pick down up enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#f0e1d2" ]  # idx 0 = original background (stubbed by pty_helper)
 }
 
 @test "picker: multiple navigations" {
-    _pick right right right enter
+    _pick down down down enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#282a36" ]  # dracula (third palette entry)
 }
 
-@test "picker: vim keys work" {
+@test "picker: j/k vim keys work" {
+    _pick j j enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
+}
+
+@test "picker: j/k scroll past visible window" {
+    # Same as the arrow-key scroll tests but via vim bindings.
+    # 23 j's from idx 0 → idx 23 (navy), then k k k → idx 20 (kanagawa).
+    _pick j j j j j j j j j j \
+         j j j j j j j j j j \
+         j j j k k k enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1f1f28" ]  # kanagawa (palette entry 20)
+}
+
+@test "picker: right/left arrows work as alternate bindings" {
+    # Right/left are mapped to down/up for convenience.
+    _pick right right enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
+}
+
+@test "picker: h/l vim keys work as alternate bindings" {
+    # h/l are mapped to up/down for convenience.
     _pick l l enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
 }
 
+@test "picker: scroll down past visible window" {
+    # Navigate past the visible window (22 rows on 24-line PTY) to force
+    # a scroll, exercising the full-redraw fallback in _tint_navigate.
+    # 23 downs from idx 0 → idx 23 = palette entry 23 (navy).
+    _pick down down down down down down down down down down \
+         down down down down down down down down down down \
+         down down down enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1b2838" ]  # navy (palette entry 23)
+}
+
+@test "picker: scroll up after scrolling down" {
+    # Scroll down to idx 23, then back up 3 to idx 20 = palette entry 20.
+    # Exercises the _TINT_PK_IDX < _TINT_PK_WIN_START branch in _tint_window.
+    _pick down down down down down down down down down down \
+         down down down down down down down down down down \
+         down down down up up up enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1f1f28" ]  # kanagawa (palette entry 20)
+}
+
+@test "picker: down past last entry wraps to start" {
+    # 30 items total (idx 0-29). 30 downs from idx 0 wraps back to idx 0.
+    # Window must jump from bottom back to top (max-distance shift).
+    _pick down down down down down down down down down down \
+         down down down down down down down down down down \
+         down down down down down down down down down down enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#f0e1d2" ]  # idx 0 = unchanged (stubbed bg)
+}
+
+@test "picker: wrap to end then continue scrolling up" {
+    # Up from idx 0 wraps to idx 29 (ubuntu), then 2 more ups → idx 27.
+    # Verifies window state is correct after a max-distance jump, and
+    # subsequent navigation scrolls correctly from the new position.
+    _pick up up up enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STDOUT" = "#1e2030" ]  # slate (palette entry 27)
+}
+
 @test "picker: cancel with escape" {
-    _pick right escape
+    _pick down escape
     [ "$PICK_EXIT" -eq 1 ]
     [ "$PICK_STDOUT" = "" ]
 }
 
 @test "picker: cancel with q" {
-    _pick right q
+    _pick down q
     [ "$PICK_EXIT" -eq 1 ]
     [ "$PICK_STDOUT" = "" ]
 }
 
+@test "picker: teardown resets rendered rows for idempotent erase" {
+    # Signal trap and picker loop both call _tint_teardown. If
+    # _TINT_PK_RENDERED_ROWS isn't reset after erase, a second call
+    # moves the cursor up again and clears lines above the picker.
+    run bash -c "
+        source '$DIR/tint'
+        _TINT_PK_RENDERED_ROWS=5
+        _TINT_PK_CURSOR_HIDDEN=0
+        _TINT_PK_EXIT_REASON=cancel
+        _TINT_PK_TRAPS_INSTALLED=0
+        _TINT_PK_SAVED_STTY=''
+        _tint_teardown
+        echo \$_TINT_PK_RENDERED_ROWS
+    "
+    [ "$status" -eq 0 ]
+    [ "${lines[-1]}" = "0" ]
+}
+
+@test "picker: many keypresses do not hang under PTY backpressure" {
+    # Full-frame redraw per keypress can fill the PTY buffer when
+    # the master side isn't draining continuously, blocking the child's
+    # write and preventing it from reading further keys — deadlock.
+    # 15 down arrows exercises enough redraws to exceed a 4KB PTY buffer.
+    run timeout 5 python3 "$DIR/test/pty_helper.py" \
+        down down down down down down down down down down \
+        down down down down down enter
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"exit:0"* ]]
+}
+
 @test "picker: set -e does not kill script during navigation" {
-    # Regression test: _tint_render used [ test ] && cmd which returns 1
-    # under set -e when the test is false, killing the script.
-    _pick right enter
+    # Under set -e, [ test ] && cmd returns 1 when the test is false,
+    # which kills the script. Render functions must use if/then instead.
+    _pick down enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "#000000" ]
 }
@@ -431,22 +545,23 @@ _pick() {
 }
 
 @test "tint_pick rejects non-bash shell with leaked BASH_VERSION" {
-    # CR-006: BASH_VERSION can leak via environment into non-bash shells.
-    # tint_pick must use subshell array syntax test, not simple presence checks.
+    # BASH_VERSION can leak via environment into non-bash shells (e.g., dash).
+    # tint_pick must use a subshell array syntax test, not simple presence checks.
     run env BASH_VERSION=5 dash -c ". '$DIR/tint'; tint_pick"
     [ "$status" -ne 0 ]
     [[ "$output" =~ "requires bash" ]]
-    # Must NOT contain "Bad substitution" (the crash this prevents)
+    # Without the guard, dash would hit ${BASH_SOURCE[0]} and crash with
+    # "Bad substitution" instead of the clean "requires bash" error.
     [[ ! "$output" =~ "Bad substitution" ]]
 }
 
 @test "tint_pick rejects non-bash shell with spoofed BASH_VERSINFO" {
-    # CR-009: BASH_VERSINFO can be set as plain env var, fooling presence checks.
+    # BASH_VERSINFO can be set as a plain env var, fooling presence checks.
     # Only real bash can parse array subscript syntax like ${BASH_VERSINFO[0]}.
     run env BASH_VERSINFO=5 dash -c ". '$DIR/tint'; tint_pick"
     [ "$status" -ne 0 ]
     [[ "$output" =~ "requires bash" ]]
-    [[ ! "$output" =~ "Bad substitution" ]]
+    [[ ! "$output" =~ "Bad substitution" ]]  # same guard as above
 }
 
 # =============================================================================
@@ -454,8 +569,8 @@ _pick() {
 # =============================================================================
 
 @test "tint_pick preserves caller EXIT trap in direct call" {
-    # CR-005/CR-008: tint_pick must restore caller's EXIT trap when called
-    # directly (not in command substitution).
+    # tint_pick must restore the caller's EXIT trap when called directly
+    # (not in command substitution).
     local result
     result=$(python3 - "$DIR" <<'PYEOF'
 import os, sys, time, select
@@ -491,7 +606,7 @@ PYEOF
 }
 
 @test "tint_pick in subshell does not corrupt stdout with EXIT trap" {
-    # CR-005: hex=$(tint_pick) must not include caller EXIT trap output.
+    # hex=$(tint_pick) must not include caller EXIT trap output.
     local result
     result=$(python3 - "$DIR" <<'PYEOF'
 import os, sys, time, select
@@ -536,10 +651,11 @@ PYEOF
 }
 
 @test "tint_pick subshell stdout clean when BASHPID unset (Bash 3.2 compat)" {
-    # CR-010: BASHPID doesn't exist on Bash 3.2, so ${BASHPID:-$$} always
-    # equals $$. This breaks subshell detection, causing EXIT trap to be
-    # saved/restored inside command substitution, corrupting stdout.
-    # The fix uses BASH_SUBSHELL (available since Bash 3.0) instead.
+    # BASHPID doesn't exist on Bash 3.2, so ${BASHPID:-$$} always equals $$
+    # even inside command substitution. Without a working subshell check,
+    # hex=$(tint_pick) would save/restore the EXIT trap inside the subshell,
+    # leaking trap output into the captured hex value. BASH_SUBSHELL (Bash 3.0+)
+    # correctly distinguishes subshells from direct calls.
     local result
     result=$(python3 - "$DIR" <<'PYEOF'
 import os, sys, time, select
@@ -580,13 +696,41 @@ PYEOF
 }
 
 # =============================================================================
+# Picker: Terminal State Cleanup
+# =============================================================================
+
+@test "picker: stty echo restored after enter" {
+    _pick down enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STTY_ECHO" = "on" ]
+}
+
+@test "picker: stty echo restored after escape" {
+    _pick down escape
+    [ "$PICK_EXIT" -eq 1 ]
+    [ "$PICK_STTY_ECHO" = "on" ]
+}
+
+@test "picker: stty echo restored after q" {
+    _pick down q
+    [ "$PICK_EXIT" -eq 1 ]
+    [ "$PICK_STTY_ECHO" = "on" ]
+}
+
+@test "picker: stty echo restored after selecting unchanged" {
+    _pick enter
+    [ "$PICK_EXIT" -eq 0 ]
+    [ "$PICK_STTY_ECHO" = "on" ]
+}
+
+# =============================================================================
 # Picker: Misc
 # =============================================================================
 
 @test "picker tests work from non-repo directory" {
-    # CR-009: pty_helper.py uses source ./tint which assumes cwd is repo root.
-    # Tests should pass even when invoked from a different directory.
+    # pty_helper.py resolves the tint script path via $DIR, not cwd.
+    # Verify tests pass even when invoked from a different directory.
     cd /tmp
-    run bats "$DIR/test/tint.bats" -f "picker: navigate right and select"
+    run bats "$DIR/test/tint.bats" -f "picker: navigate down and select"
     [ "$status" -eq 0 ]
 }
