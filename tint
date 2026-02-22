@@ -7,7 +7,7 @@
 # Compatibility:
 #   Interactive picker (no args) requires bash for read -n/-t support.
 #   All other commands work with any POSIX shell (dash, ash, sh):
-#     tint <color>    tint --list    tint --reset    tint --help
+#     tint <color>    tint reset    tint --list    tint --help
 #
 #   Note: We use 'local' throughout. While not in POSIX spec, it's supported by
 #   dash, ash, busybox sh, and every /bin/sh in practical use. See:
@@ -19,18 +19,19 @@
 #
 # Usage:
 #   tint                  Interactive picker with live preview
-#   tint <name|hex>       Set directly (e.g., "dracula", "#282a36")
+#   tint <name|hex>       Set directly (e.g., "solarized", "#002b36")
 #   tint random           Pick a random color
-#   tint --reset          Reset to terminal default
+#   tint reset            Reset to terminal default
 #   tint --list           List available colors
 #   tint --help           Show help
 #
 # Library usage:
 #   source /path/to/tint
-#   tint_pick "$current"  # Interactive picker (0=selected, 1=cancelled)
-#   tint_set "#282a36"    # Set background
-#   tint_reset            # Reset to default
-#   tint_query            # Query current background
+#   tint_query                # Query current background
+#   tint_resolve "solarized"  # Resolve name → #002b36
+#   tint_set "#002b36"        # Set background
+#   tint_reset                # Reset to default
+#   tint_pick "$current"      # Interactive picker (0=selected, 1=cancelled)
 #
 # Configuration:
 #   TINT_PALETTE_FILE     Custom palette file (one "name:#hex" per line)
@@ -38,7 +39,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.3.1"
+TINT_VERSION="0.4.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -152,13 +153,13 @@ tint_lookup() {
     return 1
 }
 
-# tint_resolve <input> - Resolve name/hex/"none" to hex (empty for "none")
+# tint_resolve <input> - Resolve name/hex/"reset" to hex (empty for "reset")
 #
-# Stdout: #rrggbb hex value (empty for "none")
+# Stdout: #rrggbb hex value (empty for "reset")
 # Returns: 0 on success, 1 on failure (safe under set -e)
 tint_resolve() {
     local input="$1"
-    [ "$input" = "none" ] && return 0
+    [ "$input" = "reset" ] && return 0
     # Expand 3-digit hex to 6-digit (#abc → #aabbcc)
     if printf '%s\n' "$input" | grep -qE '^#[0-9a-fA-F]{3}$'; then
         input="#$(printf '%s' "$input" | sed 's/^#\(.\)\(.\)\(.\)$/\1\1\2\2\3\3/')"
@@ -1069,11 +1070,11 @@ USAGE
     tint                  Interactive picker with live preview
     tint <name|hex>       Set background directly
     tint random           Pick a random color
-    tint --reset          Reset to terminal default
-    tint --query          Query current background
+    tint reset            Reset to terminal default
+    tint --help           Show this help
     tint --list           List available colors
     tint --names          List names only
-    tint --help           Show this help
+    tint --query          Query current background
     tint --version        Show version
 
 INTERACTIVE CONTROLS
@@ -1083,10 +1084,10 @@ INTERACTIVE CONTROLS
     Esc  q                Cancel (restore original)
 
 EXAMPLES
-    tint dracula          Set by name
-    tint "#282a36"        Set by hex code
+    tint solarized        Set by name
+    tint "#002b36"        Set by hex code
     tint random           Surprise me
-    tint none             Reset and disable
+    tint reset            Reset to terminal default
     tint --list           Show all available colors
 
 CONFIGURATION
@@ -1145,22 +1146,18 @@ _tint_main() {
         -h|--help)
             _tint_usage
             ;;
-        -v|--version)
-            echo "tint $TINT_VERSION"
-            ;;
         -l|--list)
             tint_list
             ;;
         -n|--names)
             tint_list_names
             ;;
-        -r|--reset)
-            tint_reset
-            echo "Reset to terminal default"
-            ;;
         -q|--query)
             tint_query || { echo "Query failed" >&2; exit 1; }
             echo
+            ;;
+        -v|--version)
+            echo "tint $TINT_VERSION"
             ;;
         -*)
             echo "Unknown option: $1" >&2
@@ -1187,18 +1184,17 @@ _tint_main() {
             tint_set "$hex"
             echo "$name $hex"
             ;;
+        reset)
+            tint_reset
+            echo "Reset to terminal default"
+            ;;
         *)
             # local is de facto standard (see line 76)
             # shellcheck disable=SC3043
             local hex
-            if hex=$(tint_resolve "$1"); then
-                if [ -n "$hex" ]; then
-                    tint_set "$hex"
-                    echo "$hex"
-                else
-                    tint_reset
-                    echo "Reset to terminal default"
-                fi
+            if hex=$(tint_resolve "$1") && [ -n "$hex" ]; then
+                tint_set "$hex"
+                echo "$hex"
             else
                 echo "Unknown color: $1" >&2
                 echo "Run 'tint --list' for available colors" >&2

@@ -34,13 +34,13 @@ tint --version
 
 ```bash
 tint                  # Interactive picker with live preview
-tint dracula          # Set by name
-tint "#282a36"        # Set by hex
+tint solarized        # Set by name
+tint "#002b36"        # Set by hex
 tint random           # Pick a random color
-tint --reset          # Reset to terminal default
-tint --query          # Query current background
+tint reset            # Reset to terminal default
 tint --list           # List available colors
 tint --names          # List names only
+tint --query          # Query current background
 ```
 
 ### Interactive Controls
@@ -94,15 +94,15 @@ Source `tint` to use its functions in scripts:
 ```bash
 source /path/to/tint
 
-tint_query              # Query current background → #rrggbb
-tint_set "#282a36"      # Set background
-tint_reset              # Reset to default
-tint_resolve "dracula"  # Resolve name → #282a36
-tint_lookup "dracula"   # Look up in palette → #282a36
-tint_list               # Print all palette entries
-tint_list_names         # Print color names only
-tint_supports_color     # Check if terminal supports OSC colors
-tint_pick "$current"    # Interactive picker → selected hex
+tint_supports_color       # Check if terminal supports OSC colors
+tint_query                # Query current background → #rrggbb
+tint_resolve "solarized"  # Resolve name → #002b36
+tint_lookup "solarized"   # Look up in palette → #002b36
+tint_set "#002b36"        # Set background
+tint_reset                # Reset to default
+tint_pick "$current"      # Interactive picker → selected hex
+tint_list                 # Print all palette entries
+tint_list_names           # Print color names only
 ```
 
 ## Shell Integration
@@ -118,7 +118,7 @@ cd() { builtin cd "$@" && tint_auto; }
 Then create `.tint` files in project directories:
 
 ```bash
-echo "dracula" > ~/projects/myproject/.tint
+echo "solarized" > ~/projects/myproject/.tint
 ```
 
 ## Compatibility
