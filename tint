@@ -355,10 +355,10 @@ tint_supports_color() {
 # (teardown shows a cursor that was never hidden — harmless no-op).
 _tint_hide_cursor() { _TINT_PK_CURSOR_HIDDEN=1; printf '\e[?25l' >/dev/tty; }
 
-# _tint_term_lines - Get the number of terminal lines
+# _tint_get_terminal_height - Get the number of terminal lines
 #
 # Stdout: integer line count (defaults to 24)
-_tint_term_lines() {
+_tint_get_terminal_height() {
     local n
     n=$(tput lines 2>/dev/null) || n="${LINES:-24}"
     case "$n" in *[!0-9]*|"") n=24 ;; esac
@@ -384,13 +384,13 @@ _tint_erase_picker() {
 
 # --- Picker: Teardown ---
 
-# _tint_teardown - Unified teardown for all exit paths
+# _tint_restore_terminal - Unified teardown for all exit paths
 #
 # Idempotent: safe to call multiple times (signal handler + normal return).
 # Uses resource flags to skip work that was never started or already undone.
 #
 # Reads: _TINT_PK_EXIT_REASON (decides whether to restore background color)
-_tint_teardown() {
+_tint_restore_terminal() {
     if [ "${_TINT_PK_CURSOR_HIDDEN:-0}" -eq 1 ]; then
         printf '\e[?25h' >/dev/tty
         _TINT_PK_CURSOR_HIDDEN=0
@@ -487,12 +487,12 @@ _tint_render_row() {
     _tint_buf+=$'\r\e[K'"${row}"$'\n'
 }
 
-# _tint_preview - Set terminal background to the highlighted color
+# _tint_apply_preview_color - Set terminal background to the highlighted color
 #
 # Provides live preview as the user navigates the picker.
 #
 # Sets: _TINT_PK_PREVIEWED
-_tint_preview() {
+_tint_apply_preview_color() {
     if [ "$_TINT_PK_IDX" -eq 0 ]; then
         if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
             tint_set "$_TINT_PK_ORIGINAL_BG"
@@ -506,14 +506,14 @@ _tint_preview() {
     fi
 }
 
-# _tint_window - Compute the scroll window that keeps _TINT_PK_IDX visible
+# _tint_update_scroll_window - Compute the scroll window that keeps _TINT_PK_IDX visible
 #
 # Edge-triggered: only shifts the window when the cursor would move off-screen.
 # This minimizes full redraws (most keypresses stay within the window and use
-# incremental rendering via _tint_render_delta).
+# incremental rendering via _tint_render_changed_rows).
 #
 # Sets: _TINT_PK_WIN_START, _TINT_PK_WIN_END
-_tint_window() {
+_tint_update_scroll_window() {
     if [ "$_TINT_PK_VISIBLE" -ge "$_TINT_PK_TOTAL" ]; then
         _TINT_PK_WIN_START=0
         _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
@@ -536,10 +536,10 @@ _tint_window() {
     fi
 }
 
-# _tint_scroll_indicator - Append scroll indicator to _tint_buf
+# _tint_render_scroll_indicator - Append scroll indicator to _tint_buf
 #
 # Shows how many entries are hidden above/below (e.g., "↑ 3 more · ↓ 5 more").
-_tint_scroll_indicator() {
+_tint_render_scroll_indicator() {
     # shellcheck disable=SC3024,SC3003
     _tint_buf+=$'\r\e[K'
     local indicator=""
@@ -557,18 +557,17 @@ _tint_scroll_indicator() {
     _tint_buf+="$indicator"
 }
 
-# _tint_render_all - Full redraw of the picker
+# _tint_render_all - Full redraw of the picker (pure rendering)
 #
 # Repaints every visible row plus the scroll indicator. Output is
 # buffered into _tint_buf and flushed in a single write() to avoid
 # flicker and reduce PTY backpressure (especially over SSH).
 #
+# Callers must update model state (_tint_apply_preview_color, _tint_update_scroll_window) first.
+#
 # Sets: _TINT_PK_RENDERED_ROWS
 _tint_render_all() {
     local i highlighted
-
-    _tint_preview
-    _tint_window
 
     # Build entire frame into _tint_buf, then write in one shot.
     local _tint_buf=""
@@ -589,7 +588,7 @@ _tint_render_all() {
         i=$(( i + 1 ))
     done
 
-    _tint_scroll_indicator
+    _tint_render_scroll_indicator
     printf '%s' "$_tint_buf" >/dev/tty
     _TINT_PK_RENDERED_ROWS=$rows_printed
 }
@@ -643,7 +642,7 @@ _tint_read_key() {
     esac
 }
 
-# _tint_render_delta <old_idx> - Incremental repaint of two changed rows
+# _tint_render_changed_rows <old_idx> - Incremental repaint of two changed rows
 #
 # Only repaints the previously highlighted row (unhighlight) and the newly
 # highlighted row (highlight). Used when the scroll window hasn't changed,
@@ -651,7 +650,7 @@ _tint_read_key() {
 # PTY buffer deadlocks when the master side isn't draining continuously.
 #
 # Reads: _TINT_PK_IDX, _TINT_PK_WIN_START, _TINT_PK_RENDERED_ROWS
-_tint_render_delta() {
+_tint_render_changed_rows() {
     local old_idx="$1"
     # shellcheck disable=SC3024,SC3003
     local _tint_buf="" _tmp=""
@@ -694,13 +693,13 @@ _tint_render_delta() {
     printf '%s' "$_tint_buf" >/dev/tty
 }
 
-# _tint_navigate <direction> - Move cursor up or down with wrapping, then re-render
+# _tint_move_cursor <direction> - Move cursor up or down with wrapping, then re-render
 #
 # Uses incremental rendering when the scroll window doesn't change (most
 # keypresses), falling back to full redraw only when scrolling occurs.
 #
 # Sets: _TINT_PK_IDX
-_tint_navigate() {
+_tint_move_cursor() {
     local old_idx=$_TINT_PK_IDX
     local old_win="$_TINT_PK_WIN_START"
     if [ "$1" = "up" ]; then
@@ -708,25 +707,25 @@ _tint_navigate() {
     else
         _TINT_PK_IDX=$(( _TINT_PK_IDX < last_idx ? _TINT_PK_IDX + 1 : 0 ))
     fi
-    _tint_preview
-    _tint_window
+    _tint_apply_preview_color
+    _tint_update_scroll_window
     # || true: render is non-fatal; prevents set -e abort on signal race
     if [ "$_TINT_PK_WIN_START" -ne "$old_win" ]; then
         _tint_render_all || true
     else
-        _tint_render_delta "$old_idx" || true
+        _tint_render_changed_rows "$old_idx" || true
     fi
 }
 
-# _tint_confirm - Confirm selection: teardown, apply color, print result
+# _tint_accept_selection - Confirm selection: teardown, apply color, print result
 #
 # Teardown skips background restore because _TINT_PK_EXIT_REASON=confirm.
 # Then we explicitly apply the selected color and print its hex value.
 #
 # Stdout: #rrggbb hex of selected color (empty if reset)
-_tint_confirm() {
+_tint_accept_selection() {
     _TINT_PK_EXIT_REASON=confirm
-    _tint_teardown
+    _tint_restore_terminal
     if [ "$_TINT_PK_IDX" -eq 0 ]; then
         if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
             tint_set "$_TINT_PK_ORIGINAL_BG"
@@ -744,13 +743,13 @@ _tint_confirm() {
 
 # --- Picker: Session ---
 
-# _tint_compute_fg <idx> - Set _tint_fg[idx] based on RGB luminance
+# _tint_compute_foreground <idx> - Set _tint_fg[idx] based on RGB luminance
 #
 # Uses the perceived brightness formula (BT.601 luma) to pick
 # black (30) or white (97) foreground for readability.
 #
 # Sets: _tint_fg[idx]
-_tint_compute_fg() {
+_tint_compute_foreground() {
     # shellcheck disable=SC3054
     if [ $(( (_tint_r[$1] * 299 + _tint_g[$1] * 587 + _tint_b[$1] * 114) / 1000 )) -gt 128 ]; then
         _tint_fg[$1]="30"
@@ -759,13 +758,13 @@ _tint_compute_fg() {
     fi
 }
 
-# _tint_load_arrays - Parse palette into parallel arrays with pre-computed RGB/fg
+# _tint_load_palette_arrays - Parse palette into parallel arrays with pre-computed RGB/fg
 #
 # Single read pass over $TINT_PALETTE (~29 sed forks → 0).
 #
 # Sets: palette_count, _TINT_PK_TOTAL, last_idx (via dynamic scoping),
 #   _tint_names[], _tint_hexes[], _tint_r[], _tint_g[], _tint_b[], _tint_fg[]
-_tint_load_arrays() {
+_tint_load_palette_arrays() {
     local hex name
     i=0
     while IFS=: read -r name hex; do
@@ -782,7 +781,7 @@ _tint_load_arrays() {
         _tint_g[i]=$((16#${hex:3:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
         _tint_b[i]=$((16#${hex:5:2}))
-        _tint_compute_fg "$i"
+        _tint_compute_foreground "$i"
     done <<EOF
 $TINT_PALETTE
 EOF
@@ -791,10 +790,10 @@ EOF
     last_idx=$(( _TINT_PK_TOTAL - 1 ))
 }
 
-# _tint_osc11_error - Print diagnostic when OSC 11 query fails
+# _tint_report_osc11_error - Print diagnostic when OSC 11 query fails
 #
 # Includes environment-specific hints for tmux and SSH.
-_tint_osc11_error() {
+_tint_report_osc11_error() {
     cat >&2 <<'ERRMSG'
 Error: terminal does not support OSC 11 (background color escape sequences).
 
@@ -811,10 +810,10 @@ ERRMSG
     printf '  A supported terminal will echo back the current background color.\n' >&2
 }
 
-# _tint_compute_row0 - Pre-compute RGB and foreground for the original background
+# _tint_compute_unchanged_entry - Pre-compute RGB and foreground for the original background
 #
 # Sets: _tint_r[0], _tint_g[0], _tint_b[0], _tint_fg[0]
-_tint_compute_row0() {
+_tint_compute_unchanged_entry() {
     if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
         # shellcheck disable=SC3054,SC3057,SC3052
         _tint_r[0]=$((16#${_TINT_PK_ORIGINAL_BG:1:2}))
@@ -822,15 +821,15 @@ _tint_compute_row0() {
         _tint_g[0]=$((16#${_TINT_PK_ORIGINAL_BG:3:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
         _tint_b[0]=$((16#${_TINT_PK_ORIGINAL_BG:5:2}))
-        _tint_compute_fg 0
+        _tint_compute_foreground 0
     fi
 }
 
-# _tint_find_default <current> - Match current color to a palette index
+# _tint_find_default_index <current> - Match current color to a palette index
 #
 # Sets: _TINT_PK_IDX, _TINT_PK_DEFAULT (if a match is found)
 # Reads: palette_count, _tint_hexes[] (via dynamic scoping)
-_tint_find_default() {
+_tint_find_default_index() {
     local current="$1"
     if [ -n "$current" ]; then
         local current_hex
@@ -850,7 +849,7 @@ _tint_find_default() {
     fi
 }
 
-# _tint_install_traps - Save caller traps and install picker signal handlers
+# _tint_install_signal_traps - Save caller traps and install picker signal handlers
 #
 # EXIT is saved separately — in command substitution (hex=$(tint_pick)),
 # restoring EXIT would fire the caller's trap prematurely.
@@ -860,7 +859,7 @@ _tint_find_default() {
 # Sets: _tint_saved_traps, _tint_saved_exit, _TINT_PK_INTERRUPTED,
 #   _TINT_PK_CURSOR_HIDDEN, _TINT_PK_EXIT_REASON, _TINT_PK_KEY,
 #   _TINT_PK_SAVED_STTY, _TINT_PK_TRAPS_INSTALLED
-_tint_install_traps() {
+_tint_install_signal_traps() {
     _tint_saved_traps=$(trap -p INT TERM 2>/dev/null || true)
     # shellcheck disable=SC3028
     if [ "${BASH_SUBSHELL:-0}" -eq 0 ]; then
@@ -880,10 +879,10 @@ _tint_install_traps() {
     _TINT_PK_SAVED_STTY=""
     # Install traps before stty -echo so a signal in the gap can't leave
     # the terminal with echo disabled.
-    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_teardown' EXIT
+    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_restore_terminal' EXIT
     # 130 = 128+SIGINT, 143 = 128+SIGTERM (standard shell exit codes)
-    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_teardown; _TINT_PK_INTERRUPTED=130' INT
-    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_teardown; _TINT_PK_INTERRUPTED=143' TERM
+    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PK_INTERRUPTED=130' INT
+    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PK_INTERRUPTED=143' TERM
     _TINT_PK_TRAPS_INSTALLED=1
 }
 
@@ -892,7 +891,7 @@ _tint_install_traps() {
 # Sets: _TINT_PK_SAVED_STTY, _tint_esc_timeout, _tint_read_timeout
 # Returns: non-zero if interrupted during setup
 _tint_setup_terminal() {
-    if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_teardown; return "$_TINT_PK_INTERRUPTED"; fi
+    if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
     # Non-canonical mode: -echo suppresses keystroke echo, -icanon disables
     # line buffering. Without -icanon, bash's read -n1 toggles canonical mode
     # per call, creating a window for escape sequence byte delays.
@@ -920,12 +919,14 @@ _tint_setup_terminal() {
         _tint_esc_timeout=1
         _tint_read_timeout=1
     fi
-    if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_teardown; return "$_TINT_PK_INTERRUPTED"; fi
+    if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
     printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    _tint_apply_preview_color
+    _tint_update_scroll_window
     _tint_render_all
 }
 
-# _tint_picker_init [<current>] - Set up picker session state
+# _tint_init_picker [<current>] - Set up picker session state
 #
 # Loads palette, queries terminal, installs traps, renders initial frame.
 #
@@ -934,15 +935,15 @@ _tint_setup_terminal() {
 #   _tint_saved_traps, _tint_saved_exit, _tint_esc_timeout, _tint_read_timeout,
 #   palette_count, last_idx
 # Returns: non-zero on failure (no bash, no tty, no OSC 11 support)
-_tint_picker_init() {
+_tint_init_picker() {
     _TINT_PK_IDX=0
     _TINT_PK_DEFAULT=0
 
-    _tint_load_arrays
+    _tint_load_palette_arrays
 
     # Calculate visible window size based on terminal height
     local term_lines
-    term_lines=$(_tint_term_lines)
+    term_lines=$(_tint_get_terminal_height)
     _TINT_PK_VISIBLE=$(( term_lines - 2 ))  # reserve hint + scroll indicator
     if [ "$_TINT_PK_VISIBLE" -gt "$_TINT_PK_TOTAL" ]; then _TINT_PK_VISIBLE=$_TINT_PK_TOTAL; fi
     if [ "$_TINT_PK_VISIBLE" -lt 1 ]; then _TINT_PK_VISIBLE=1; fi
@@ -951,34 +952,34 @@ _tint_picker_init() {
     _TINT_PK_WIN_END=0
 
     if ! _TINT_PK_ORIGINAL_BG=$(tint_query); then
-        _tint_osc11_error
+        _tint_report_osc11_error
         return 1
     fi
     _TINT_PK_PREVIEWED=0
 
-    _tint_compute_row0
-    _tint_find_default "${1:-}"
-    _tint_install_traps
+    _tint_compute_unchanged_entry
+    _tint_find_default_index "${1:-}"
+    _tint_install_signal_traps
     _tint_setup_terminal
 }
 
-# _tint_picker_loop - Input loop for the interactive picker
+# _tint_run_picker_loop - Input loop for the interactive picker
 #
 # Reads keystrokes via _tint_read_key and dispatches to action functions.
 #
 # Stdout: #rrggbb hex of selected color (on confirm only)
 # Returns: 0 if color selected, 1 if cancelled or error
-_tint_picker_loop() {
+_tint_run_picker_loop() {
     while true; do
-        if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_teardown; return "$_TINT_PK_INTERRUPTED"; fi
+        if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
         # Timeout ensures signal flag (_TINT_PK_INTERRUPTED) gets checked even
         # when bash restarts read after a caught signal (SA_RESTART behavior).
-        _tint_read_key || { _TINT_PK_EXIT_REASON=cancel; _tint_teardown; return 1; }
-        if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_teardown; return "$_TINT_PK_INTERRUPTED"; fi
+        _tint_read_key || { _TINT_PK_EXIT_REASON=cancel; _tint_restore_terminal; return 1; }
+        if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
         case "$_TINT_PK_KEY" in
-            up|down)  _tint_navigate "$_TINT_PK_KEY" ;;
-            q|cancel) _TINT_PK_EXIT_REASON=cancel; _tint_teardown; return 1 ;;
-            confirm)  _tint_confirm; return 0 ;;
+            up|down)  _tint_move_cursor "$_TINT_PK_KEY" ;;
+            q|cancel) _TINT_PK_EXIT_REASON=cancel; _tint_restore_terminal; return 1 ;;
+            confirm)  _tint_accept_selection; return 0 ;;
         esac
     done
 }
@@ -1007,16 +1008,16 @@ tint_pick() {
         return 1
     fi
 
-    # Session-scoped locals. Visible to _tint_picker_init, _tint_picker_loop,
-    # _tint_teardown, and render functions via bash dynamic scoping.
+    # Session-scoped locals. Visible to _tint_init_picker, _tint_run_picker_loop,
+    # _tint_restore_terminal, and render functions via bash dynamic scoping.
     local i palette_count last_idx
     # shellcheck disable=SC3054
     local -a _tint_names _tint_hexes _tint_r _tint_g _tint_b _tint_fg
     local _tint_saved_traps _tint_saved_exit
     local _tint_esc_timeout _tint_read_timeout
 
-    _tint_picker_init "${1:-}" || return $?
-    _tint_picker_loop
+    _tint_init_picker "${1:-}" || return $?
+    _tint_run_picker_loop
 }
 
 # =============================================================================

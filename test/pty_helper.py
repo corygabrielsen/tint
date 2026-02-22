@@ -172,7 +172,7 @@ def main():
         # So we look for the pattern after the last newline.
 
         # Look for the hex after the last cursor-show sequence (\x1b[?25h)
-        # since _tint_teardown shows the cursor right before the return.
+        # since _tint_restore_terminal shows the cursor right before the return.
         # Strip OSC sequences first (\x1b]...\x1b\\ or \x1b]...\x07) so we
         # don't match hex values inside tint_set's terminal control output.
         show_cursor = "\x1b[?25h"
