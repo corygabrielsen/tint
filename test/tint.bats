@@ -193,6 +193,20 @@ INNEREOF
     [ "$status" -eq 1 ]
 }
 
+@test "tint_resolve expands 3-digit hex" {
+    _load_tint
+    run tint_resolve "#abc"
+    [ "$status" -eq 0 ]
+    [ "$output" = "#aabbcc" ]
+}
+
+@test "tint_resolve expands 3-digit hex uppercase" {
+    _load_tint
+    run tint_resolve "#F0A"
+    [ "$status" -eq 0 ]
+    [ "$output" = "#FF00AA" ]
+}
+
 @test "tint_resolve rejects invalid hex" {
     _load_tint
     run tint_resolve "#12345"  # 5 digits

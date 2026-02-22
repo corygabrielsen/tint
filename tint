@@ -38,7 +38,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.3.0"
+TINT_VERSION="0.3.1"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -159,6 +159,10 @@ tint_lookup() {
 tint_resolve() {
     local input="$1"
     [ "$input" = "none" ] && return 0
+    # Expand 3-digit hex to 6-digit (#abc → #aabbcc)
+    if printf '%s\n' "$input" | grep -qE '^#[0-9a-fA-F]{3}$'; then
+        input="#$(printf '%s' "$input" | sed 's/^#\(.\)\(.\)\(.\)$/\1\1\2\2\3\3/')"
+    fi
     printf '%s\n' "$input" | grep -qE '^#[0-9a-fA-F]{6}$' && { printf '%s' "$input"; return 0; }
     # Guard lookup failure to prevent set -e from aborting caller
     tint_lookup "$input" || return 1
