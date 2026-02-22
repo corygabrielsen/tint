@@ -229,20 +229,20 @@ INNEREOF
     [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
 }
 
-@test "empty palette does not crash _tint_load_arrays" {
+@test "empty palette does not crash _tint_load_palette_arrays" {
     # When TINT_PALETTE has no valid name:#hex entries (e.g., 'invalid'),
-    # _tint_load_arrays must skip malformed lines instead of crashing on
+    # _tint_load_palette_arrays must skip malformed lines instead of crashing on
     # arithmetic expansion with empty hex (16#${hex:1:2}).
     export TINT_PALETTE='invalid'
     source "$DIR/tint"
-    run bash -c "source '$DIR/tint'; export TINT_PALETTE='invalid'; _tint_load_arrays"
+    run bash -c "source '$DIR/tint'; export TINT_PALETTE='invalid'; _tint_load_palette_arrays"
     [ "$status" -eq 0 ]
 }
 
-@test "malformed hex does not crash _tint_load_arrays" {
+@test "malformed hex does not crash _tint_load_palette_arrays" {
     # Truncated hex like 'bad:#12' bypasses the empty check but crashes
     # on 16#${hex:5:2} with empty substring. Guard must validate full #RRGGBB.
-    run bash -c "source '$DIR/tint'; export TINT_PALETTE='bad:#12'; _tint_load_arrays"
+    run bash -c "source '$DIR/tint'; export TINT_PALETTE='bad:#12'; _tint_load_palette_arrays"
     [ "$status" -eq 0 ]
 }
 
@@ -440,7 +440,7 @@ _pick() {
 
 @test "picker: scroll down past visible window" {
     # Navigate past the visible window (22 rows on 24-line PTY) to force
-    # a scroll, exercising the full-redraw fallback in _tint_navigate.
+    # a scroll, exercising the full-redraw fallback in _tint_move_cursor.
     # 23 downs from idx 0 → idx 23 = palette entry 23 (navy).
     _pick down down down down down down down down down down \
          down down down down down down down down down down \
@@ -451,7 +451,7 @@ _pick() {
 
 @test "picker: scroll up after scrolling down" {
     # Scroll down to idx 23, then back up 3 to idx 20 = palette entry 20.
-    # Exercises the _TINT_PK_IDX < _TINT_PK_WIN_START branch in _tint_window.
+    # Exercises the _TINT_PK_IDX < _TINT_PK_WIN_START branch in _tint_update_scroll_window.
     _pick down down down down down down down down down down \
          down down down down down down down down down down \
          down down down up up up enter
@@ -491,7 +491,7 @@ _pick() {
 }
 
 @test "picker: teardown resets rendered rows for idempotent erase" {
-    # Signal trap and picker loop both call _tint_teardown. If
+    # Signal trap and picker loop both call _tint_restore_terminal. If
     # _TINT_PK_RENDERED_ROWS isn't reset after erase, a second call
     # moves the cursor up again and clears lines above the picker.
     run bash -c "
@@ -501,7 +501,7 @@ _pick() {
         _TINT_PK_EXIT_REASON=cancel
         _TINT_PK_TRAPS_INSTALLED=0
         _TINT_PK_SAVED_STTY=''
-        _tint_teardown
+        _tint_restore_terminal
         echo \$_TINT_PK_RENDERED_ROWS
     "
     [ "$status" -eq 0 ]
