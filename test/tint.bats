@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# shellcheck disable=SC1091,SC2030,SC2031,SC2034
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
@@ -275,6 +276,176 @@ INNEREOF
     if echo "$query_section" | grep -q '_tq_saved_trap'; then
         echo "Found _tq_saved_trap in _tint_query_raw"; return 1
     fi
+}
+
+# =============================================================================
+# Picker: Model
+# =============================================================================
+
+@test "model: down from 0" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=0
+    _TINT_PK_OLD_IDX=0
+    local last_idx=9
+    _tint_model_move_cursor down
+    [ "$_TINT_PK_IDX" -eq 1 ]
+    [ "$_TINT_PK_OLD_IDX" -eq 0 ]
+}
+
+@test "model: up from 0 wraps to last" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=0
+    _TINT_PK_OLD_IDX=0
+    local last_idx=9
+    _tint_model_move_cursor up
+    [ "$_TINT_PK_IDX" -eq 9 ]
+    [ "$_TINT_PK_OLD_IDX" -eq 0 ]
+}
+
+@test "model: down from last wraps to 0" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=9
+    _TINT_PK_OLD_IDX=0
+    local last_idx=9
+    _tint_model_move_cursor down
+    [ "$_TINT_PK_IDX" -eq 0 ]
+    [ "$_TINT_PK_OLD_IDX" -eq 9 ]
+}
+
+@test "model: up from middle" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=5
+    _TINT_PK_OLD_IDX=0
+    local last_idx=9
+    _tint_model_move_cursor up
+    [ "$_TINT_PK_IDX" -eq 4 ]
+    [ "$_TINT_PK_OLD_IDX" -eq 5 ]
+}
+
+@test "model: consecutive moves track OLD_IDX" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=0
+    _TINT_PK_OLD_IDX=0
+    local last_idx=9
+    _tint_model_move_cursor down
+    _tint_model_move_cursor down
+    _tint_model_move_cursor down
+    [ "$_TINT_PK_IDX" -eq 3 ]
+    [ "$_TINT_PK_OLD_IDX" -eq 2 ]
+}
+
+@test "scroll: all fit on screen" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=0
+    _TINT_PK_TOTAL=5
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=0
+    _TINT_PK_RENDERED_ROWS=0
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_START" -eq 0 ]
+    [ "$_TINT_PK_WIN_END" -eq 4 ]
+    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+}
+
+@test "scroll: initial window centers cursor" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=15
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=0
+    _TINT_PK_RENDERED_ROWS=0
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_START" -eq 10 ]
+    [ "$_TINT_PK_WIN_END" -eq 19 ]
+    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+}
+
+@test "scroll: initial window clamps to start" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=2
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=0
+    _TINT_PK_RENDERED_ROWS=0
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_START" -eq 0 ]
+    [ "$_TINT_PK_WIN_END" -eq 9 ]
+    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+}
+
+@test "scroll: initial window clamps to end" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=28
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=0
+    _TINT_PK_RENDERED_ROWS=0
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_START" -eq 20 ]
+    [ "$_TINT_PK_WIN_END" -eq 29 ]
+    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+}
+
+@test "scroll: cursor below window shifts down" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=15
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=9
+    _TINT_PK_RENDERED_ROWS=5
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_END" -eq 15 ]
+    [ "$_TINT_PK_WIN_START" -eq 6 ]
+    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+}
+
+@test "scroll: cursor above window shifts up" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=3
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=10
+    _TINT_PK_WIN_END=19
+    _TINT_PK_RENDERED_ROWS=5
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_START" -eq 3 ]
+    [ "$_TINT_PK_WIN_END" -eq 12 ]
+    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+}
+
+@test "scroll: cursor within window no scroll" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=5
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=9
+    _TINT_PK_RENDERED_ROWS=5
+    _tint_update_scroll_window
+    [ "$_TINT_PK_WIN_START" -eq 0 ]
+    [ "$_TINT_PK_WIN_END" -eq 9 ]
+    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+}
+
+@test "scroll: scrolled flag resets after no-scroll update" {
+    source "$DIR/tint"
+    _TINT_PK_IDX=15
+    _TINT_PK_TOTAL=30
+    _TINT_PK_VISIBLE=10
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=9
+    _TINT_PK_RENDERED_ROWS=5
+    _tint_update_scroll_window
+    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+    # Now move within the window — scrolled should reset
+    _TINT_PK_IDX=10
+    _tint_update_scroll_window
+    [ "$_TINT_PK_SCROLLED" -eq 0 ]
 }
 
 # =============================================================================
