@@ -448,6 +448,133 @@ INNEREOF
     [ "$_TINT_PK_SCROLLED" -eq 0 ]
 }
 
+# Helper: set up minimal state for _tint_render_row tests
+_setup_render_row() {
+    source "$DIR/tint"
+    _tint_names=(unused "dracula")
+    _tint_hexes=(unused "#282a36")
+    _tint_r=(0 40) _tint_g=(0 42) _tint_b=(0 54)
+    _tint_fg=(30 97)
+    _TINT_PK_TOTAL=2
+    _TINT_PK_DEFAULT=0
+    _TINT_PK_ORIGINAL_BG="#f0e1d2"
+    _TINT_ROW_WIDTH=40
+    _tint_buf=""
+}
+
+# =============================================================================
+# Picker: View
+# =============================================================================
+
+@test "render: highlighted row has cursor marker" {
+    _setup_render_row
+    _tint_render_row 1 1
+    [[ "$_tint_buf" == *"> "* ]]
+}
+
+@test "render: unhighlighted row has no marker" {
+    _setup_render_row
+    _tint_render_row 1 0
+    [[ "$_tint_buf" != *"> "* ]]
+    [[ "$_tint_buf" != *"* "* ]]
+}
+
+@test "render: default row has star marker" {
+    _setup_render_row
+    _TINT_PK_DEFAULT=1
+    _tint_render_row 1 0
+    [[ "$_tint_buf" == *"* "* ]]
+}
+
+@test "render: row 0 with original bg shows unchanged" {
+    _setup_render_row
+    _tint_render_row 0 0
+    [[ "$_tint_buf" == *"(unchanged)"* ]]
+}
+
+@test "render: row 0 without original bg shows reset to default" {
+    _setup_render_row
+    _TINT_PK_ORIGINAL_BG=""
+    _tint_render_row 0 0
+    [[ "$_tint_buf" == *"(reset to default)"* ]]
+}
+
+@test "render: row includes color name" {
+    _setup_render_row
+    _tint_render_row 1 0
+    [[ "$_tint_buf" == *"dracula"* ]]
+}
+
+@test "render: row includes hex value" {
+    _setup_render_row
+    _tint_render_row 1 0
+    [[ "$_tint_buf" == *"282a36"* ]]
+}
+
+@test "render: highlighted row uses normal weight" {
+    _setup_render_row
+    _tint_render_row 1 1
+    [[ "$_tint_buf" == *"48;2;"* ]]
+    [[ "$_tint_buf" != *$'\e[2;'* ]]
+}
+
+@test "render: unhighlighted row uses dim" {
+    _setup_render_row
+    _tint_render_row 1 0
+    [[ "$_tint_buf" == *$'\e[2;'* ]]
+}
+
+@test "render: row 0 default also gets star" {
+    _setup_render_row
+    _TINT_PK_DEFAULT=1
+    _tint_render_row 0 0
+    [[ "$_tint_buf" == *"* "* ]]
+}
+
+@test "scroll indicator: both arrows when scrolled mid" {
+    source "$DIR/tint"
+    _TINT_PK_WIN_START=5
+    _TINT_PK_WIN_END=14
+    _TINT_PK_TOTAL=30
+    _tint_buf=""
+    _tint_render_scroll_indicator
+    [[ "$_tint_buf" == *"↑ 5 more"* ]]
+    [[ "$_tint_buf" == *"↓ 15 more"* ]]
+}
+
+@test "scroll indicator: up arrow only at bottom" {
+    source "$DIR/tint"
+    _TINT_PK_WIN_START=20
+    _TINT_PK_WIN_END=29
+    _TINT_PK_TOTAL=30
+    _tint_buf=""
+    _tint_render_scroll_indicator
+    [[ "$_tint_buf" == *"↑ 20 more"* ]]
+    [[ "$_tint_buf" != *"↓"* ]]
+}
+
+@test "scroll indicator: down arrow only at top" {
+    source "$DIR/tint"
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=9
+    _TINT_PK_TOTAL=30
+    _tint_buf=""
+    _tint_render_scroll_indicator
+    [[ "$_tint_buf" == *"↓ 20 more"* ]]
+    [[ "$_tint_buf" != *"↑"* ]]
+}
+
+@test "scroll indicator: no indicator when all visible" {
+    source "$DIR/tint"
+    _TINT_PK_WIN_START=0
+    _TINT_PK_WIN_END=4
+    _TINT_PK_TOTAL=5
+    _tint_buf=""
+    _tint_render_scroll_indicator
+    [[ "$_tint_buf" != *"↑"* ]]
+    [[ "$_tint_buf" != *"↓"* ]]
+}
+
 # =============================================================================
 # Picker: OSC 11 Guard
 # =============================================================================
