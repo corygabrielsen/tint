@@ -440,7 +440,7 @@ _pick() {
 
 @test "picker: scroll down past visible window" {
     # Navigate past the visible window (22 rows on 24-line PTY) to force
-    # a scroll, exercising the full-redraw fallback in _tint_move_cursor.
+    # a scroll, exercising the full-redraw path in _tint_render_cursor_move.
     # 23 downs from idx 0 → idx 23 = palette entry 23 (navy).
     _pick down down down down down down down down down down \
          down down down down down down down down down down \

@@ -310,41 +310,45 @@ tint_supports_color() {
 #
 # State reference (all globals used by the picker subsystem):
 #
-#   Picker model                            Set by
-#   ────────────────────────────────────────────────────────
-#   _TINT_PK_IDX          int  cursor pos      init, navigate
-#   _TINT_PK_DEFAULT      int  start pos       init
-#   _TINT_PK_TOTAL        int  entry count     init
-#   _TINT_PK_VISIBLE      int  window rows     init
-#   _TINT_PK_KEY          str  last keypress   read_key
-#   _TINT_PK_EXIT_REASON  str  exit cause      loop, traps
+#   Picker model          Type  Description      Set by
+#   ────────────────────  ────  ───────────────  ───────────────────────────────────────────────────
+#   _TINT_PK_IDX          int   cursor pos       init_picker, find_default_index, model_move_cursor
+#   _TINT_PK_OLD_IDX      int   prev cursor pos  init_picker, model_move_cursor
+#   _TINT_PK_DEFAULT      int   start pos        init_picker, find_default_index
+#   _TINT_PK_TOTAL        int   entry count      load_palette_arrays
+#   _TINT_PK_VISIBLE      int   window rows      init_picker
+#   _TINT_PK_KEY          str   last keypress    read_key
+#   _TINT_PK_EXIT_REASON  str   exit cause       install_signal_traps, accept_selection, picker_loop
+#   _TINT_PK_SCROLLED     int   window shifted   init_picker, update_scroll_window
+#   _TINT_PK_WIN_START    int   top visible idx  init_picker, update_scroll_window
+#   _TINT_PK_WIN_END      int   bot visible idx  init_picker, update_scroll_window
 #
-#   Resource flags                            Set by
-#   ────────────────────────────────────────────────────────
-#   _TINT_PK_CURSOR_HIDDEN    bool            hide_cursor
-#   _TINT_PK_TRAPS_INSTALLED  bool            init
-#   _TINT_PK_SAVED_STTY       str             init
-#   _TINT_PK_RENDERED_ROWS    int             render_all
-#   _TINT_PK_PREVIEWED        bool            preview
-#   _TINT_PK_INTERRUPTED      int (0/130/143) traps
-#   _TINT_PK_ORIGINAL_BG      str             init
-#   _TINT_PK_WIN_START        int             window
-#   _TINT_PK_WIN_END          int             window
+#   Resource flags            Type             Description     Set by
+#   ────────────────────────  ───────────────  ──────────────  ───────────────────────────────────────────────────
+#   _TINT_PK_CURSOR_HIDDEN    bool             cursor hidden   install_signal_traps, hide_cursor, restore_terminal
+#   _TINT_PK_TRAPS_INSTALLED  bool             traps set       install_signal_traps, restore_terminal
+#   _TINT_PK_SAVED_STTY       str              original stty   install_signal_traps, setup_terminal
+#   _TINT_PK_RENDERED_ROWS    int              rows on screen  init_picker, render_all, restore_terminal
+#   _TINT_PK_PREVIEWED        bool             preview active  init_picker, apply_preview_color
+#   _TINT_PK_INTERRUPTED      int (0/130/143)  signal code     install_signal_traps, traps
+#   _TINT_PK_ORIGINAL_BG      str              starting bg     init_picker
 #
-#   Palette table (parallel arrays, 0 = "unchanged" entry)
-#   ─────────────────────────────────────────────────────
+#   Palette arrays (0 = "unchanged" entry)
+#   Name            Type  Description
+#   ──────────────  ────  ──────────────────────────────
 #   _tint_names[i]  str   display name
 #   _tint_hexes[i]  str   #RRGGBB
 #   _tint_r/g/b[i]  int   RGB components
 #   _tint_fg[i]     str   foreground ANSI ("30" or "97")
 #
 #   Session context (locals in tint_pick, visible via dynamic scoping)
-#   ─────────────────────────────────────────────────────
-#   _tint_saved_traps   str  caller's INT/TERM traps
-#   _tint_saved_exit    str  caller's EXIT trap
-#   _tint_esc_timeout   str  escape sequence timeout
-#   _tint_read_timeout  str  keystroke polling timeout
-#   last_idx            int  alias for _TINT_PK_TOTAL - 1
+#   Name                Type  Description
+#   ──────────────────  ────  ────────────────────────────
+#   _tint_saved_traps   str   caller's INT/TERM traps
+#   _tint_saved_exit    str   caller's EXIT trap
+#   _tint_esc_timeout   str   escape sequence timeout
+#   _tint_read_timeout  str   keystroke polling timeout
+#   last_idx            int   alias for _TINT_PK_TOTAL - 1
 
 # --- Picker: Terminal Helpers ---
 
@@ -352,7 +356,7 @@ tint_supports_color() {
 #
 # Sets: _TINT_PK_CURSOR_HIDDEN
 # Flag set before write so a signal between them errs on the safe side
-# (teardown shows a cursor that was never hidden — harmless no-op).
+# (_tint_restore_terminal shows a cursor that was never hidden — harmless no-op).
 _tint_hide_cursor() { _TINT_PK_CURSOR_HIDDEN=1; printf '\e[?25l' >/dev/tty; }
 
 # _tint_get_terminal_height - Get the number of terminal lines
@@ -417,7 +421,60 @@ _tint_restore_terminal() {
     fi
 }
 
-# --- Picker: Rendering ---
+# --- Picker: Model ---
+
+# _tint_model_move_cursor <direction> - Update cursor index with wrapping
+#
+# Pure model: no terminal I/O.
+#
+# Sets: _TINT_PK_IDX, _TINT_PK_OLD_IDX
+_tint_model_move_cursor() {
+    _TINT_PK_OLD_IDX=$_TINT_PK_IDX
+    if [ "$1" = "up" ]; then
+        _TINT_PK_IDX=$(( _TINT_PK_IDX > 0 ? _TINT_PK_IDX - 1 : last_idx ))
+    else
+        _TINT_PK_IDX=$(( _TINT_PK_IDX < last_idx ? _TINT_PK_IDX + 1 : 0 ))
+    fi
+}
+
+# _tint_update_scroll_window - Compute the scroll window that keeps _TINT_PK_IDX visible
+#
+# Pure model: no terminal I/O.
+# Edge-triggered: only shifts the window when the cursor would move off-screen.
+# This minimizes full redraws (most keypresses stay within the window and use
+# incremental rendering via _tint_render_changed_rows).
+#
+# Sets: _TINT_PK_WIN_START, _TINT_PK_WIN_END, _TINT_PK_SCROLLED
+_tint_update_scroll_window() {
+    local old_start=$_TINT_PK_WIN_START
+    if [ "$_TINT_PK_VISIBLE" -ge "$_TINT_PK_TOTAL" ]; then
+        _TINT_PK_WIN_START=0
+        _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
+    elif [ "${_TINT_PK_WIN_END:-0}" -eq 0 ] && [ "$_TINT_PK_RENDERED_ROWS" -eq 0 ]; then
+        # Initial window: center around cursor
+        local half=$(( _TINT_PK_VISIBLE / 2 ))
+        _TINT_PK_WIN_START=$(( _TINT_PK_IDX - half ))
+        if [ "$_TINT_PK_WIN_START" -lt 0 ]; then _TINT_PK_WIN_START=0; fi
+        _TINT_PK_WIN_END=$(( _TINT_PK_WIN_START + _TINT_PK_VISIBLE - 1 ))
+        if [ "$_TINT_PK_WIN_END" -ge "$_TINT_PK_TOTAL" ]; then
+            _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
+            _TINT_PK_WIN_START=$(( _TINT_PK_WIN_END - _TINT_PK_VISIBLE + 1 ))
+        fi
+    elif [ "$_TINT_PK_IDX" -lt "$_TINT_PK_WIN_START" ]; then
+        _TINT_PK_WIN_START=$_TINT_PK_IDX
+        _TINT_PK_WIN_END=$(( _TINT_PK_WIN_START + _TINT_PK_VISIBLE - 1 ))
+    elif [ "$_TINT_PK_IDX" -gt "$_TINT_PK_WIN_END" ]; then
+        _TINT_PK_WIN_END=$_TINT_PK_IDX
+        _TINT_PK_WIN_START=$(( _TINT_PK_WIN_END - _TINT_PK_VISIBLE + 1 ))
+    fi
+    if [ "$_TINT_PK_WIN_START" -ne "$old_start" ]; then
+        _TINT_PK_SCROLLED=1
+    else
+        _TINT_PK_SCROLLED=0
+    fi
+}
+
+# --- Picker: View ---
 
 # _tint_render_row <row_idx> <highlighted> - Append one formatted picker row to _tint_buf
 #
@@ -506,36 +563,6 @@ _tint_apply_preview_color() {
     fi
 }
 
-# _tint_update_scroll_window - Compute the scroll window that keeps _TINT_PK_IDX visible
-#
-# Edge-triggered: only shifts the window when the cursor would move off-screen.
-# This minimizes full redraws (most keypresses stay within the window and use
-# incremental rendering via _tint_render_changed_rows).
-#
-# Sets: _TINT_PK_WIN_START, _TINT_PK_WIN_END
-_tint_update_scroll_window() {
-    if [ "$_TINT_PK_VISIBLE" -ge "$_TINT_PK_TOTAL" ]; then
-        _TINT_PK_WIN_START=0
-        _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
-    elif [ "${_TINT_PK_WIN_END:-0}" -eq 0 ] && [ "$_TINT_PK_RENDERED_ROWS" -eq 0 ]; then
-        # Initial window: center around cursor
-        local half=$(( _TINT_PK_VISIBLE / 2 ))
-        _TINT_PK_WIN_START=$(( _TINT_PK_IDX - half ))
-        if [ "$_TINT_PK_WIN_START" -lt 0 ]; then _TINT_PK_WIN_START=0; fi
-        _TINT_PK_WIN_END=$(( _TINT_PK_WIN_START + _TINT_PK_VISIBLE - 1 ))
-        if [ "$_TINT_PK_WIN_END" -ge "$_TINT_PK_TOTAL" ]; then
-            _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
-            _TINT_PK_WIN_START=$(( _TINT_PK_WIN_END - _TINT_PK_VISIBLE + 1 ))
-        fi
-    elif [ "$_TINT_PK_IDX" -lt "$_TINT_PK_WIN_START" ]; then
-        _TINT_PK_WIN_START=$_TINT_PK_IDX
-        _TINT_PK_WIN_END=$(( _TINT_PK_WIN_START + _TINT_PK_VISIBLE - 1 ))
-    elif [ "$_TINT_PK_IDX" -gt "$_TINT_PK_WIN_END" ]; then
-        _TINT_PK_WIN_END=$_TINT_PK_IDX
-        _TINT_PK_WIN_START=$(( _TINT_PK_WIN_END - _TINT_PK_VISIBLE + 1 ))
-    fi
-}
-
 # _tint_render_scroll_indicator - Append scroll indicator to _tint_buf
 #
 # Shows how many entries are hidden above/below (e.g., "↑ 3 more · ↓ 5 more").
@@ -557,13 +584,13 @@ _tint_render_scroll_indicator() {
     _tint_buf+="$indicator"
 }
 
-# _tint_render_all - Full redraw of the picker (pure rendering)
+# _tint_render_all - Full redraw of the picker
 #
 # Repaints every visible row plus the scroll indicator. Output is
 # buffered into _tint_buf and flushed in a single write() to avoid
 # flicker and reduce PTY backpressure (especially over SSH).
 #
-# Callers must update model state (_tint_apply_preview_color, _tint_update_scroll_window) first.
+# Callers must update model state (_tint_update_scroll_window) first.
 #
 # Sets: _TINT_PK_RENDERED_ROWS
 _tint_render_all() {
@@ -591,55 +618,6 @@ _tint_render_all() {
     _tint_render_scroll_indicator
     printf '%s' "$_tint_buf" >/dev/tty
     _TINT_PK_RENDERED_ROWS=$rows_printed
-}
-
-# --- Picker: Input ---
-
-# _tint_read_key - Read one logical keypress
-#
-# Reads raw bytes from /dev/tty and normalizes escape sequences into
-# logical key names. Uses _tint_esc_timeout (set in _tint_setup_terminal)
-# to distinguish bare Escape from arrow key sequences.
-#
-# Sets: _TINT_PK_KEY - normalized key name:
-#   "up" | "down"     Arrow/vim keys
-#   "confirm"         Enter key
-#   "cancel"          Bare Esc (no following sequence)
-#   "q"               Q key
-#   ""                Timeout (no key pressed)
-# Returns: 0 on success or timeout, 1 on EOF/error
-_tint_read_key() {
-    _TINT_PK_KEY=""
-    local key key2 key3
-    if ! IFS= read -rn1 -t "$_tint_read_timeout" key </dev/tty; then
-        # Timeout with no data — loop back to check signals.
-        # If a byte arrived at the timeout boundary, key is non-empty;
-        # fall through to process it normally rather than aborting.
-        if [ -z "${key:-}" ]; then return 0; fi
-    fi
-    case "$key" in
-        "$_TINT_ESC")
-            # CSI: ESC [ A/B/C/D (most terminals)
-            # SS3: ESC O A/B/C/D (some terminals, notably older xterm modes)
-            if IFS= read -rn1 -t "$_tint_esc_timeout" key2 </dev/tty 2>/dev/null; then
-                case "$key2" in
-                    "["|"O")
-                        IFS= read -rn1 -t "$_tint_esc_timeout" key3 </dev/tty 2>/dev/null || return 0
-                        case "$key3" in
-                            A|D) _TINT_PK_KEY=up ;;   # Up/Left → up
-                            B|C) _TINT_PK_KEY=down ;;  # Down/Right → down
-                        esac
-                        ;;
-                esac
-            else
-                _TINT_PK_KEY=cancel
-            fi
-            ;;
-        h|k) _TINT_PK_KEY=up ;;
-        l|j) _TINT_PK_KEY=down ;;
-        q)   _TINT_PK_KEY=q ;;
-        "")  _TINT_PK_KEY=confirm ;;
-    esac
 }
 
 # _tint_render_changed_rows <old_idx> - Incremental repaint of two changed rows
@@ -693,38 +671,84 @@ _tint_render_changed_rows() {
     printf '%s' "$_tint_buf" >/dev/tty
 }
 
-# _tint_move_cursor <direction> - Move cursor up or down with wrapping, then re-render
+# _tint_render_cursor_move - Render after a cursor move
 #
-# Uses incremental rendering when the scroll window doesn't change (most
-# keypresses), falling back to full redraw only when scrolling occurs.
+# Applies preview color, then uses incremental rendering when the scroll
+# window didn't change, falling back to full redraw when scrolling occurred.
 #
-# Sets: _TINT_PK_IDX
-_tint_move_cursor() {
-    local old_idx=$_TINT_PK_IDX
-    local old_win="$_TINT_PK_WIN_START"
-    if [ "$1" = "up" ]; then
-        _TINT_PK_IDX=$(( _TINT_PK_IDX > 0 ? _TINT_PK_IDX - 1 : last_idx ))
-    else
-        _TINT_PK_IDX=$(( _TINT_PK_IDX < last_idx ? _TINT_PK_IDX + 1 : 0 ))
-    fi
+# Reads: _TINT_PK_SCROLLED, _TINT_PK_OLD_IDX
+_tint_render_cursor_move() {
     _tint_apply_preview_color
-    _tint_update_scroll_window
     # || true: render is non-fatal; prevents set -e abort on signal race
-    if [ "$_TINT_PK_WIN_START" -ne "$old_win" ]; then
+    if [ "$_TINT_PK_SCROLLED" -eq 1 ]; then
         _tint_render_all || true
     else
-        _tint_render_changed_rows "$old_idx" || true
+        _tint_render_changed_rows "$_TINT_PK_OLD_IDX" || true
     fi
 }
 
+# --- Picker: Input ---
+
+# _tint_read_key - Read one logical keypress
+#
+# Reads raw bytes from /dev/tty and normalizes escape sequences into
+# logical key names. Uses _tint_esc_timeout (set in _tint_setup_terminal)
+# to distinguish bare Escape from arrow key sequences.
+#
+# Sets: _TINT_PK_KEY - normalized key name:
+#   "up" | "down"     Arrow/vim keys
+#   "confirm"         Enter key
+#   "cancel"          Bare Esc (no following sequence)
+#   "q"               Q key
+#   ""                Timeout (no key pressed)
+# Returns: 0 on success or timeout, 1 on EOF/error
+_tint_read_key() {
+    _TINT_PK_KEY=""
+    local key key2 key3
+    if ! IFS= read -rn1 -t "$_tint_read_timeout" key </dev/tty; then
+        # Timeout with no data — loop back to check signals.
+        # If a byte arrived at the timeout boundary, key is non-empty;
+        # fall through to process it normally rather than aborting.
+        if [ -z "${key:-}" ]; then return 0; fi
+    fi
+    case "$key" in
+        "$_TINT_ESC")
+            # CSI: ESC [ A/B/C/D (most terminals)
+            # SS3: ESC O A/B/C/D (some terminals, notably older xterm modes)
+            if IFS= read -rn1 -t "$_tint_esc_timeout" key2 </dev/tty 2>/dev/null; then
+                case "$key2" in
+                    "["|"O")
+                        IFS= read -rn1 -t "$_tint_esc_timeout" key3 </dev/tty 2>/dev/null || return 0
+                        case "$key3" in
+                            A|D) _TINT_PK_KEY=up ;;   # Up/Left → up
+                            B|C) _TINT_PK_KEY=down ;;  # Down/Right → down
+                        esac
+                        ;;
+                esac
+            else
+                _TINT_PK_KEY=cancel
+            fi
+            ;;
+        h|k) _TINT_PK_KEY=up ;;
+        l|j) _TINT_PK_KEY=down ;;
+        q)   _TINT_PK_KEY=q ;;
+        "")  _TINT_PK_KEY=confirm ;;
+    esac
+}
+
+# --- Picker: Session ---
+
 # _tint_accept_selection - Confirm selection: teardown, apply color, print result
 #
-# Teardown skips background restore because _TINT_PK_EXIT_REASON=confirm.
-# Then we explicitly apply the selected color and print its hex value.
+# Model: sets _TINT_PK_EXIT_REASON=confirm so _tint_restore_terminal skips
+# background restore. View: tears down terminal, applies selected color,
+# and prints hex to stdout.
 #
 # Stdout: #rrggbb hex of selected color (empty if reset)
 _tint_accept_selection() {
+    # Model: mark as confirmed
     _TINT_PK_EXIT_REASON=confirm
+    # View: teardown and apply final color
     _tint_restore_terminal
     if [ "$_TINT_PK_IDX" -eq 0 ]; then
         if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
@@ -740,8 +764,6 @@ _tint_accept_selection() {
         printf '%s' "${_tint_hexes[$_TINT_PK_IDX]}"
     fi
 }
-
-# --- Picker: Session ---
 
 # _tint_compute_foreground <idx> - Set _tint_fg[idx] based on RGB luminance
 #
@@ -921,8 +943,10 @@ _tint_setup_terminal() {
     fi
     if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
     printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
-    _tint_apply_preview_color
+    # Model: compute scroll window for initial cursor position
     _tint_update_scroll_window
+    # View: apply preview color and render initial frame
+    _tint_apply_preview_color
     _tint_render_all
 }
 
@@ -950,6 +974,8 @@ _tint_init_picker() {
     _TINT_PK_RENDERED_ROWS=0
     _TINT_PK_WIN_START=0
     _TINT_PK_WIN_END=0
+    _TINT_PK_OLD_IDX=0
+    _TINT_PK_SCROLLED=0
 
     if ! _TINT_PK_ORIGINAL_BG=$(tint_query); then
         _tint_report_osc11_error
@@ -977,7 +1003,13 @@ _tint_run_picker_loop() {
         _tint_read_key || { _TINT_PK_EXIT_REASON=cancel; _tint_restore_terminal; return 1; }
         if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
         case "$_TINT_PK_KEY" in
-            up|down)  _tint_move_cursor "$_TINT_PK_KEY" ;;
+            up|down)
+                # Model
+                _tint_model_move_cursor "$_TINT_PK_KEY"
+                _tint_update_scroll_window
+                # View
+                _tint_render_cursor_move
+                ;;
             q|cancel) _TINT_PK_EXIT_REASON=cancel; _tint_restore_terminal; return 1 ;;
             confirm)  _tint_accept_selection; return 0 ;;
         esac
