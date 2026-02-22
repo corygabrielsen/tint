@@ -180,9 +180,15 @@ INNEREOF
     [ "$result" = "#2e3440" ]
 }
 
-@test "tint_resolve handles none" {
+@test "tint reset resets to default" {
+    run tint reset
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Reset to terminal default" ]]
+}
+
+@test "tint_resolve handles reset" {
     _load_tint
-    run tint_resolve "none"
+    run tint_resolve "reset"
     [ "$status" -eq 0 ]
     [ "$output" = "" ]
 }
