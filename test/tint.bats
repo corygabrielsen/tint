@@ -62,12 +62,12 @@ _load_tint() {
     [ "$short" = "$output" ]
 }
 
-@test "tint -q matches --query" {
+@test "tint -g matches --get" {
     # Both may fail without a real terminal, so compare exit status and output
-    run tint -q
+    run tint -g
     local short_status="$status"
     local short_output="$output"
-    run tint --query
+    run tint --get
     [ "$short_status" -eq "$status" ]
     [ "$short_output" = "$output" ]
 }

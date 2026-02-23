@@ -41,7 +41,7 @@ tint reset            # Reset to terminal default
 tint completions bash # Output shell completions
 tint -h, --help       # Show help
 tint -l, --list       # List available colors
-tint -q, --query      # Query current background
+tint -g, --get        # Get current background color
 tint -v, --version    # Show version
 ```
 
@@ -97,7 +97,7 @@ Source `tint` to use its functions in scripts:
 source /path/to/tint
 
 tint_supports_color       # Check if terminal supports OSC colors
-tint_query                # Query current background → #rrggbb
+tint_query                # Get current background → #rrggbb
 tint_resolve "solarized"  # Resolve name → #002b36
 tint_lookup "solarized"   # Look up in palette → #002b36
 tint_set "#002b36"        # Set background
@@ -172,7 +172,7 @@ Tested on: iTerm2, Alacritty, Kitty, Windows Terminal, GNOME Terminal, Konsole
 `tint` uses [OSC 11](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) escape sequences:
 
 - `\e]11;#rrggbb\e\\` - Set background color
-- `\e]11;?\e\\` - Query current background
+- `\e]11;?\e\\` - Get current background
 - `\e]111\e\\` - Reset to default
 
 ## Development
