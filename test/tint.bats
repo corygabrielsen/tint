@@ -357,30 +357,30 @@ INNEREOF
 # Code Invariants
 # =============================================================================
 
-@test "_tint_query_raw is defined as subshell function" {
-    # _tint_query_raw must use ( ) not { } so trap/stty changes are isolated.
-    # Match the function definition: _tint_query_raw() (
-    grep -qE '_tint_query_raw\(\)[[:space:]]*\(' "$DIR/tint" || {
-        echo "_tint_query_raw is not a subshell function"
+@test "_tint_get_raw is defined as subshell function" {
+    # _tint_get_raw must use ( ) not { } so trap/stty changes are isolated.
+    # Match the function definition: _tint_get_raw() (
+    grep -qE '_tint_get_raw\(\)[[:space:]]*\(' "$DIR/tint" || {
+        echo "_tint_get_raw is not a subshell function"
         return 1
     }
 }
 
-@test "tint_query has no bash-specific trap branching" {
+@test "tint_get has no bash-specific trap branching" {
     # With subshell isolation, there should be no BASH_VERSION checks or
     # trap -p / eval saved trap logic in the query functions.
     # Note: can't use `! grep` in bats — set -e is suppressed by `!`,
     # so failures would be silently ignored.
     local query_section
-    query_section=$(grep -A30 '_tint_query_raw' "$DIR/tint")
+    query_section=$(grep -A30 '_tint_get_raw' "$DIR/tint")
     if echo "$query_section" | grep -q 'BASH_VERSION'; then
-        echo "Found BASH_VERSION in _tint_query_raw"; return 1
+        echo "Found BASH_VERSION in _tint_get_raw"; return 1
     fi
     if echo "$query_section" | grep -q 'trap -p'; then
-        echo "Found trap -p in _tint_query_raw"; return 1
+        echo "Found trap -p in _tint_get_raw"; return 1
     fi
     if echo "$query_section" | grep -q '_tq_saved_trap'; then
-        echo "Found _tq_saved_trap in _tint_query_raw"; return 1
+        echo "Found _tq_saved_trap in _tint_get_raw"; return 1
     fi
 }
 
@@ -685,7 +685,7 @@ _setup_render_row() {
 # Picker: OSC 11 Guard
 # =============================================================================
 
-# Helper: run tint_pick in a PTY with tint_query stubbed to fail.
+# Helper: run tint_pick in a PTY with tint_get stubbed to fail.
 # Accepts optional env var exports to simulate tmux/SSH contexts.
 # Usage: _pick_unsupported [env_setup_cmd]
 # Sets: UNSUPPORTED_OUTPUT (captured stderr+stdout)
@@ -702,7 +702,7 @@ if pid == 0:
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
     cmd_prefix = (env_setup + '; ') if env_setup else ''
-    cmd = cmd_prefix + "source '" + tint_dir + "/tint'; tint_query() { return 1; }; tint_pick 2>&1; echo EXIT:$?"
+    cmd = cmd_prefix + "source '" + tint_dir + "/tint'; tint_get() { return 1; }; tint_pick 2>&1; echo EXIT:$?"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -986,7 +986,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; tint_query() { printf '%s' '#f0e1d2'; }; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
+    cmd = "source '" + tint_dir + "/tint'; tint_get() { printf '%s' '#f0e1d2'; }; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -1022,7 +1022,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; tint_query() { printf '%s' '#f0e1d2'; }; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    cmd = "source '" + tint_dir + "/tint'; tint_get() { printf '%s' '#f0e1d2'; }; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -1071,7 +1071,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; tint_query() { printf '%s' '#f0e1d2'; }; unset BASHPID; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    cmd = "source '" + tint_dir + "/tint'; tint_get() { printf '%s' '#f0e1d2'; }; unset BASHPID; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)

@@ -18,7 +18,7 @@ import shlex
 import sys
 import time
 
-# Sentinel value for tint_query stub — must not appear in the palette.
+# Sentinel value for tint_get stub — must not appear in the palette.
 STUB_BG = "#f0e1d2"
 
 KEY_MAP = {
@@ -79,7 +79,7 @@ def main():
         os.execvp("bash", [
             "bash", "-c",
             f"source {shlex.quote(tint_path)};"
-            f" tint_query() {{ printf '%s' '{STUB_BG}'; }};"
+            f" tint_get() {{ printf '%s' '{STUB_BG}'; }};"
             # EXIT trap checks stty echo state after tint_pick returns.
             # Runs regardless of exit code, so set -e cancels still report.
             f" trap '"
