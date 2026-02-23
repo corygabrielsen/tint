@@ -38,6 +38,7 @@ tint solarized        # Set by name
 tint "#002b36"        # Set by hex
 tint random           # Pick a random color
 tint reset            # Reset to terminal default
+tint completions bash # Output shell completions
 tint --list           # List available colors
 tint --names          # List names only
 tint --query          # Query current background
@@ -125,6 +126,8 @@ echo "solarized" > ~/projects/work/.tint
 echo "reset" > ~/projects/personal/.tint    # reset to default
 ```
 
+For tab completion of color names and subcommands, see [Shell Completions](#shell-completions).
+
 The hook walks up from `$PWD` to `/` looking for the nearest `.tint` file. Colors are **sticky** — if no `.tint` is found, the current color is kept. Place a `.tint` in `~` for a global default.
 
 A `.tint` file contains a single color (name or `#hex`):
@@ -137,6 +140,21 @@ or
 
 ```
 #002b36
+```
+
+## Shell Completions
+
+Tab-complete color names, subcommands, and flags:
+
+```bash
+# bash (~/.bashrc)
+eval "$(tint completions bash)"
+
+# zsh (~/.zshrc)
+eval "$(tint completions zsh)"
+
+# fish
+tint completions fish > ~/.config/fish/completions/tint.fish
 ```
 
 ## Compatibility
