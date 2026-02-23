@@ -56,7 +56,7 @@ tint -v, --version    # Show version
 
 ## Available Colors
 
-29 popular themes:
+Built-in themes:
 
 ```
 vscode, dracula, nord, gruvbox, onedark, monokai, catppuccin, tokyo,
@@ -98,8 +98,8 @@ source /path/to/tint
 
 tint_supports_color       # Check if terminal supports OSC colors
 tint_get                  # Get current background → #rrggbb
-tint_resolve "solarized"  # Resolve name → #002b36
-tint_lookup "solarized"   # Look up in palette → #002b36
+tint_resolve "solarized"  # Name or hex → normalized #rrggbb
+tint_lookup "solarized"   # Palette name → #rrggbb (exact match)
 tint_set "#002b36"        # Set background
 tint_reset                # Reset to default
 tint_pick "$current"      # Interactive picker → selected hex
@@ -108,7 +108,7 @@ tint_list                 # Print all palette entries
 
 ## Shell Integration
 
-Auto-apply colors per directory using `.tint` files:
+Auto-apply terminal colors when you `cd` into a project. The hook runs on every directory change — your terminal shifts to match whatever you're working on.
 
 ```bash
 # bash (~/.bashrc)
@@ -118,7 +118,7 @@ eval "$(tint hook bash)"
 eval "$(tint hook zsh)"
 ```
 
-Create `.tint` files in project directories:
+Then create `.tint` files in project directories:
 
 ```bash
 echo "nord" > ~/projects/myproject/.tint
@@ -126,21 +126,13 @@ echo "solarized" > ~/projects/work/.tint
 echo "reset" > ~/projects/personal/.tint    # reset to default
 ```
 
-For tab completion of color names and subcommands, see [Shell Completions](#shell-completions).
-
 The hook walks up from `$PWD` to `/` looking for the nearest `.tint` file. Colors are **sticky** — if no `.tint` is found, the current color is kept. Place a `.tint` in `~` for a global default.
 
-A `.tint` file contains a single color (name or `#hex`):
+A `.tint` file contains a single color — either a name (`solarized`) or hex (`#002b36`).
 
-```
-solarized
-```
+Fish shell is not currently supported for hooks (completions work via `tint completions fish`).
 
-or
-
-```
-#002b36
-```
+For tab completion of color names and subcommands, see [Shell Completions](#shell-completions).
 
 ## Shell Completions
 
@@ -166,6 +158,10 @@ tint completions fish > ~/.config/fish/completions/tint.fish
 | Terminal                    | OSC 11 support (most modern terminals) |
 
 Tested on: iTerm2, Alacritty, Kitty, Windows Terminal, GNOME Terminal, Konsole
+
+**tmux**: Requires `set -g allow-passthrough on` in your tmux config for OSC 11 sequences to reach the outer terminal.
+
+**`--get` / `tint_get`**: Relies on the terminal responding to an OSC 11 query within 200ms. This works reliably on local and most remote terminals, but may time out on very slow SSH connections or terminals that don't support the query.
 
 ## How It Works
 
