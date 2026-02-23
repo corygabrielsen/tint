@@ -39,9 +39,11 @@ tint "#002b36"        # Set by hex
 tint random           # Pick a random color
 tint reset            # Reset to terminal default
 tint completions bash # Output shell completions
-tint --list           # List available colors
-tint --names          # List names only
-tint --query          # Query current background
+tint -h, --help       # Show help
+tint -l, --list       # List available colors
+tint -n, --names      # List names only
+tint -q, --query      # Query current background
+tint -v, --version    # Show version
 ```
 
 ### Interactive Controls

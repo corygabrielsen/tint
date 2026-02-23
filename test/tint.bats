@@ -42,6 +42,52 @@ _load_tint() {
     [[ ! "$output" =~ "#002b36" ]]
 }
 
+@test "tint -h matches --help" {
+    run tint -h
+    [ "$status" -eq 0 ]
+    local short="$output"
+    run tint --help
+    [ "$status" -eq 0 ]
+    [ "$short" = "$output" ]
+}
+
+@test "tint -l matches --list" {
+    run tint -l
+    [ "$status" -eq 0 ]
+    local short="$output"
+    run tint --list
+    [ "$status" -eq 0 ]
+    [ "$short" = "$output" ]
+}
+
+@test "tint -n matches --names" {
+    run tint -n
+    [ "$status" -eq 0 ]
+    local short="$output"
+    run tint --names
+    [ "$status" -eq 0 ]
+    [ "$short" = "$output" ]
+}
+
+@test "tint -v matches --version" {
+    run tint -v
+    [ "$status" -eq 0 ]
+    local short="$output"
+    run tint --version
+    [ "$status" -eq 0 ]
+    [ "$short" = "$output" ]
+}
+
+@test "tint -q matches --query" {
+    # Both may fail without a real terminal, so compare exit status and output
+    run tint -q
+    local short_status="$status"
+    local short_output="$output"
+    run tint --query
+    [ "$short_status" -eq "$status" ]
+    [ "$short_output" = "$output" ]
+}
+
 @test "tint completions bash outputs bash completion" {
     run tint completions bash
     [ "$status" -eq 0 ]
