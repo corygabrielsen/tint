@@ -45,12 +45,12 @@ tint --query          # Query current background
 
 ### Interactive Controls
 
-| Key | Action |
-|-----|--------|
-| `↑` `↓` `k` `j` | Navigate list |
+| Key             | Action                    |
+| --------------- | ------------------------- |
+| `↑` `↓` `k` `j` | Navigate list             |
 | `←` `→` `h` `l` | Navigate list (alternate) |
-| `Enter` | Select color |
-| `Esc` `q` | Cancel (restore original) |
+| `Enter`         | Select color              |
+| `Esc` `q`       | Cancel (restore original) |
 
 ## Available Colors
 
@@ -107,27 +107,45 @@ tint_list_names           # Print color names only
 
 ## Shell Integration
 
-Auto-apply colors per directory (reads `.tint` file):
+Auto-apply colors per directory using `.tint` files:
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-tint_auto() { [[ -f .tint ]] && tint "$(cat .tint)"; }
-cd() { builtin cd "$@" && tint_auto; }
+# bash (~/.bashrc)
+eval "$(tint hook bash)"
+
+# zsh (~/.zshrc)
+eval "$(tint hook zsh)"
 ```
 
-Then create `.tint` files in project directories:
+Create `.tint` files in project directories:
 
 ```bash
-echo "solarized" > ~/projects/myproject/.tint
+echo "nord" > ~/projects/myproject/.tint
+echo "solarized" > ~/projects/work/.tint
+echo "reset" > ~/projects/personal/.tint    # reset to default
+```
+
+The hook walks up from `$PWD` to `/` looking for the nearest `.tint` file. Colors are **sticky** — if no `.tint` is found, the current color is kept. Place a `.tint` in `~` for a global default.
+
+A `.tint` file contains a single color (name or `#hex`):
+
+```
+solarized
+```
+
+or
+
+```
+#002b36
 ```
 
 ## Compatibility
 
-| Feature | Requirement |
-|---------|-------------|
-| Interactive picker (`tint`) | Bash 3.2+ |
-| All other commands | Any POSIX shell (dash, ash, sh) |
-| Terminal | OSC 11 support (most modern terminals) |
+| Feature                     | Requirement                            |
+| --------------------------- | -------------------------------------- |
+| Interactive picker (`tint`) | Bash 3.2+                              |
+| All other commands          | Any POSIX shell (dash, ash, sh)        |
+| Terminal                    | OSC 11 support (most modern terminals) |
 
 Tested on: iTerm2, Alacritty, Kitty, Windows Terminal, GNOME Terminal, Konsole
 
