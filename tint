@@ -1101,7 +1101,7 @@ _tint_completions() {
     fi
 
     # First argument: flags, subcommands, or color names
-    opts="--help --list --names --query --version"
+    opts="-h --help -l --list -n --names -q --query -v --version"
     if [[ "$cur" == -* ]]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
     else
@@ -1137,10 +1137,15 @@ _tint() {
         # Flags only when user types -; otherwise subcommands + colors
         if [[ "${words[CURRENT]}" == -* ]]; then
             flags=(
+                '-h:Show help'
                 '--help:Show help'
+                '-l:List available colors'
                 '--list:List available colors'
+                '-n:List names only'
                 '--names:List names only'
+                '-q:Query current background'
                 '--query:Query current background'
+                '-v:Show version'
                 '--version:Show version'
             )
             _describe -t flags 'flag' flags
@@ -1183,11 +1188,11 @@ function __tint_needs_command
 end
 
 # Options (first argument only)
-complete -c tint -n __tint_needs_command -l help -d 'Show help'
-complete -c tint -n __tint_needs_command -l list -d 'List available colors'
-complete -c tint -n __tint_needs_command -l names -d 'List names only'
-complete -c tint -n __tint_needs_command -l query -d 'Query current background'
-complete -c tint -n __tint_needs_command -l version -d 'Show version'
+complete -c tint -n __tint_needs_command -s h -l help -d 'Show help'
+complete -c tint -n __tint_needs_command -s l -l list -d 'List available colors'
+complete -c tint -n __tint_needs_command -s n -l names -d 'List names only'
+complete -c tint -n __tint_needs_command -s q -l query -d 'Query current background'
+complete -c tint -n __tint_needs_command -s v -l version -d 'Show version'
 
 # Subcommands (first argument only)
 complete -c tint -n __tint_needs_command -a 'completions' -d 'Output shell completions'
