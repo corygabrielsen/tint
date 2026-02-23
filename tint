@@ -27,7 +27,6 @@
 #   tint hook <shell>         Output shell integration code
 #   tint -h, --help           Show help
 #   tint -l, --list           List available colors
-#   tint -n, --names          List names only
 #   tint -q, --query          Query current background
 #   tint -v, --version        Show version
 #
@@ -45,7 +44,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.7.0"
+TINT_VERSION="0.8.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -180,13 +179,6 @@ tint_resolve() {
 # Stdout: name:#hex entries, one per line
 tint_list() {
     printf '%s\n' "$TINT_PALETTE"
-}
-
-# tint_list_names - Print color names only
-#
-# Stdout: color names, one per line
-tint_list_names() {
-    printf '%s\n' "$TINT_PALETTE" | cut -d: -f1
 }
 
 # _tint_palette_get <n> - Get nth palette entry (1-indexed)
@@ -1104,12 +1096,12 @@ _tint_completions() {
     fi
 
     # First argument: flags, subcommands, or color names
-    opts="-h --help -l --list -n --names -q --query -v --version"
+    opts="-h --help -l --list -q --query -v --version"
     if [[ "$cur" == -* ]]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
     else
         local names
-        names=$(command tint --names 2>/dev/null)
+        names=$(command tint --list 2>/dev/null | cut -d: -f1)
         COMPREPLY=( $(compgen -W "$names completions hook random reset" -- "$cur") )
     fi
 }
@@ -1135,14 +1127,13 @@ _tint() {
             'completions:Output shell completions'
             'hook:Output shell integration code'
         )
-        colors=( ${(f)"$(command tint --names 2>/dev/null)"} )
+        colors=( ${(f)"$(command tint --list 2>/dev/null | cut -d: -f1)"} )
 
         # Flags only when user types -; otherwise subcommands + colors
         if [[ "${words[CURRENT]}" == -* ]]; then
             flags=(
                 {-h,--help}':Show help'
                 {-l,--list}':List available colors'
-                {-n,--names}':List names only'
                 {-q,--query}':Query current background'
                 {-v,--version}':Show version'
             )
@@ -1188,7 +1179,6 @@ end
 # Options (first argument only)
 complete -c tint -n __tint_needs_command -s h -l help -d 'Show help'
 complete -c tint -n __tint_needs_command -s l -l list -d 'List available colors'
-complete -c tint -n __tint_needs_command -s n -l names -d 'List names only'
 complete -c tint -n __tint_needs_command -s q -l query -d 'Query current background'
 complete -c tint -n __tint_needs_command -s v -l version -d 'Show version'
 
@@ -1203,7 +1193,7 @@ complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subc
 complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from hook' -xa 'bash zsh'
 
 # Color names (first argument only)
-complete -c tint -n __tint_needs_command -a '(command tint --names 2>/dev/null)' -d 'Color name'
+complete -c tint -n __tint_needs_command -a '(command tint --list 2>/dev/null | cut -d: -f1)' -d 'Color name'
 FISH_COMP
 }
 
@@ -1225,7 +1215,6 @@ USAGE
     tint hook <shell>         Output shell integration code
     tint -h, --help           Show this help
     tint -l, --list           List available colors
-    tint -n, --names          List names only
     tint -q, --query          Query current background
     tint -v, --version        Show version
 
@@ -1444,9 +1433,6 @@ _tint_main() {
             ;;
         -l|--list)
             tint_list
-            ;;
-        -n|--names)
-            tint_list_names
             ;;
         -q|--query)
             tint_query || { echo "Query failed" >&2; exit 1; }

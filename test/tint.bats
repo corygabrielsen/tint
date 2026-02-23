@@ -35,13 +35,6 @@ _load_tint() {
     [[ "$output" =~ "nord:#2e3440" ]]
 }
 
-@test "tint --names shows only names" {
-    run tint --names
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "solarized" ]]
-    [[ ! "$output" =~ "#002b36" ]]
-}
-
 @test "tint -h matches --help" {
     run tint -h
     [ "$status" -eq 0 ]
@@ -56,15 +49,6 @@ _load_tint() {
     [ "$status" -eq 0 ]
     local short="$output"
     run tint --list
-    [ "$status" -eq 0 ]
-    [ "$short" = "$output" ]
-}
-
-@test "tint -n matches --names" {
-    run tint -n
-    [ "$status" -eq 0 ]
-    local short="$output"
-    run tint --names
     [ "$status" -eq 0 ]
     [ "$short" = "$output" ]
 }
