@@ -42,6 +42,62 @@ _load_tint() {
     [[ ! "$output" =~ "#002b36" ]]
 }
 
+@test "tint completions bash outputs bash completion" {
+    run tint completions bash
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "complete -F" ]]
+    [[ "$output" =~ "_tint_completions" ]]
+}
+
+@test "tint completions zsh outputs zsh completion" {
+    run tint completions zsh
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "#compdef tint" ]]
+    [[ "$output" =~ "compdef _tint tint" ]]
+}
+
+@test "tint completions fish outputs fish completion" {
+    run tint completions fish
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "complete -c tint" ]]
+}
+
+@test "tint completions unknown fails" {
+    run tint completions powershell
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "error: unknown shell" ]]
+}
+
+@test "tint completions defaults to bash" {
+    run tint completions
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "complete -F" ]]
+}
+
+@test "bash completions include all subcommands" {
+    run tint completions bash
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "completions" ]]
+    [[ "$output" =~ "hook" ]]
+    [[ "$output" =~ "reset" ]]
+}
+
+@test "zsh completions include all subcommands" {
+    run tint completions zsh
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "completions" ]]
+    [[ "$output" =~ "hook" ]]
+    [[ "$output" =~ "reset" ]]
+}
+
+@test "fish completions include all subcommands" {
+    run tint completions fish
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "completions" ]]
+    [[ "$output" =~ "hook" ]]
+    [[ "$output" =~ "reset" ]]
+}
+
 @test "tint random picks a palette color" {
     run tint random
     [ "$status" -eq 0 ]
@@ -1625,6 +1681,12 @@ STUB
 
 @test "extra args still rejected for other commands" {
     run tint solarized extra
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "unexpected argument" ]]
+}
+
+@test "extra args rejected for completions subcommand" {
+    run tint completions bash extra
     [ "$status" -eq 1 ]
     [[ "$output" =~ "unexpected argument" ]]
 }

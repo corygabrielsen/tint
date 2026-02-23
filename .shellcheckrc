@@ -11,7 +11,7 @@ disable=SC1009
 # SC3045: In POSIX sh, read -s / trap -p is undefined
 # SC3028: In POSIX sh, RANDOM is undefined
 # tint is #!/bin/sh for portability of non-interactive commands (tint <color>,
-# --list, --reset, --help) but deliberately uses local (de facto standard in
+# --help, --list, --query) but deliberately uses local (de facto standard in
 # dash/ash/bash) and bash-only features in the interactive picker, which is
 # guarded by a runtime bash re-exec.
 disable=SC3043,SC3045,SC3028

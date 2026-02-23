@@ -7,7 +7,8 @@
 # Compatibility:
 #   Interactive picker (no args) requires bash for read -n/-t support.
 #   All other commands work with any POSIX shell (dash, ash, sh):
-#     tint <color>    tint reset    tint --list    tint --help
+#     tint <color>    tint completions    tint hook    tint reset
+#     tint --help     tint --list
 #
 #   Note: We use 'local' throughout. While not in POSIX spec, it's supported by
 #   dash, ash, busybox sh, and every /bin/sh in practical use. See:
@@ -18,12 +19,14 @@
 #   curl -fsSL https://raw.githubusercontent.com/corygabrielsen/tint/master/install.sh | bash
 #
 # Usage:
-#   tint                  Interactive picker with live preview
-#   tint <name|hex>       Set directly (e.g., "solarized", "#002b36")
-#   tint random           Pick a random color
-#   tint reset            Reset to terminal default
-#   tint --list           List available colors
-#   tint --help           Show help
+#   tint                      Interactive picker with live preview
+#   tint <name|hex>           Set directly (e.g., "solarized", "#002b36")
+#   tint random               Pick a random color
+#   tint reset                Reset to terminal default
+#   tint completions <shell>  Output shell completions (bash/zsh/fish)
+#   tint hook <shell>         Output shell integration code
+#   tint --help               Show help
+#   tint --list               List available colors
 #
 # Library usage:
 #   source /path/to/tint
@@ -39,7 +42,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.5.0"
+TINT_VERSION="0.6.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -1058,6 +1061,150 @@ tint_pick() {
 }
 
 # =============================================================================
+# Shell Completions
+# =============================================================================
+#
+# Generated scripts hardcode "tint" as the command name (standard convention
+# shared by direnv, zoxide, starship; matches the hook functions above).
+# Users who rename the binary via symlink should search-and-replace "tint"
+# with the new name in the generated output.
+#
+# All runtime lookups use `command tint` to bypass aliases/functions.
+
+# _tint_completions_bash - Output bash tab completion code
+#
+# Outputs a completion function for bash's `complete` builtin.
+# Designed for: eval "$(tint completions bash)"
+_tint_completions_bash() {
+    cat <<'BASH_COMP'
+_tint_completions() {
+    # COMP_WORDS and COMP_CWORD are always set by bash's completion system;
+    # defensive defaults (${..-}) for set -u resilience at no cost.
+    local cur opts
+    COMPREPLY=()
+    cur="${COMP_WORDS[COMP_CWORD]-}"
+
+    # Second argument: shell name for completions/hook
+    if (( COMP_CWORD == 2 )); then
+        case "${COMP_WORDS[1]-}" in
+            completions)
+                COMPREPLY=( $(compgen -W "bash zsh fish" -- "$cur") ) ;;
+            hook)
+                COMPREPLY=( $(compgen -W "bash zsh" -- "$cur") ) ;;
+        esac
+        return
+    fi
+
+    # No completions beyond second argument
+    if (( COMP_CWORD > 2 )); then
+        return
+    fi
+
+    # First argument: flags, subcommands, or color names
+    opts="--help --list --names --query --version"
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+    else
+        local names
+        names=$(command tint --names 2>/dev/null)
+        COMPREPLY=( $(compgen -W "$names completions hook random reset" -- "$cur") )
+    fi
+}
+complete -F _tint_completions tint
+BASH_COMP
+}
+
+# _tint_completions_zsh - Output zsh tab completion code
+#
+# Outputs a compdef function for zsh's completion system.
+# Designed for: eval "$(tint completions zsh)"
+_tint_completions_zsh() {
+    cat <<'ZSH_COMP'
+#compdef tint
+
+_tint() {
+    local -a subcommands flags colors
+
+    if (( CURRENT == 2 )); then
+        subcommands=(
+            'random:Pick a random color'
+            'reset:Reset to terminal default'
+            'completions:Output shell completions'
+            'hook:Output shell integration code'
+        )
+        colors=( ${(f)"$(command tint --names 2>/dev/null)"} )
+
+        # Flags only when user types -; otherwise subcommands + colors
+        if [[ "${words[CURRENT]}" == -* ]]; then
+            flags=(
+                '--help:Show help'
+                '--list:List available colors'
+                '--names:List names only'
+                '--query:Query current background'
+                '--version:Show version'
+            )
+            _describe -t flags 'flag' flags
+        else
+            zstyle ':completion:*:*:tint:*' group-name ''
+            _describe -t subcommands 'subcommand' subcommands
+            _describe -t colors 'color' colors
+        fi
+    elif (( CURRENT == 3 )); then
+        case "${words[2]}" in
+            completions)
+                _values 'shell' bash zsh fish ;;
+            hook)
+                _values 'shell' bash zsh ;;
+        esac
+    fi
+}
+
+# compdef requires compinit; guard so eval before compinit doesn't error.
+# Place eval after compinit in .zshrc for completions to register.
+if (( $+functions[compdef] )); then
+    compdef _tint tint
+fi
+ZSH_COMP
+}
+
+# _tint_completions_fish - Output fish tab completion code
+#
+# Outputs complete commands for fish's completion system.
+# Designed for: tint completions fish > ~/.config/fish/completions/tint.fish
+_tint_completions_fish() {
+    cat <<'FISH_COMP'
+# Fish completions for tint
+complete -c tint -x
+
+# True when completing the first argument (no positional arg entered yet)
+function __tint_needs_command
+    set -l cmd (commandline -opc)
+    test (count $cmd) -eq 1
+end
+
+# Options (first argument only)
+complete -c tint -n __tint_needs_command -l help -d 'Show help'
+complete -c tint -n __tint_needs_command -l list -d 'List available colors'
+complete -c tint -n __tint_needs_command -l names -d 'List names only'
+complete -c tint -n __tint_needs_command -l query -d 'Query current background'
+complete -c tint -n __tint_needs_command -l version -d 'Show version'
+
+# Subcommands (first argument only)
+complete -c tint -n __tint_needs_command -a 'completions' -d 'Output shell completions'
+complete -c tint -n __tint_needs_command -a 'hook' -d 'Output shell integration code'
+complete -c tint -n __tint_needs_command -a 'random' -d 'Pick a random color'
+complete -c tint -n __tint_needs_command -a 'reset' -d 'Reset to terminal default'
+
+# Subcommand arguments (second argument only)
+complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from completions' -xa 'bash zsh fish'
+complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from hook' -xa 'bash zsh'
+
+# Color names (first argument only)
+complete -c tint -n __tint_needs_command -a '(command tint --names 2>/dev/null)' -d 'Color name'
+FISH_COMP
+}
+
+# =============================================================================
 # CLI
 # =============================================================================
 
@@ -1067,16 +1214,17 @@ _tint_usage() {
 tint - terminal background color picker
 
 USAGE
-    tint                  Interactive picker with live preview
-    tint <name|hex>       Set background directly
-    tint random           Pick a random color
-    tint reset            Reset to terminal default
-    tint hook <shell>     Output shell integration code
-    tint --help           Show this help
-    tint --list           List available colors
-    tint --names          List names only
-    tint --query          Query current background
-    tint --version        Show version
+    tint                      Interactive picker with live preview
+    tint <name|hex>           Set background directly
+    tint random               Pick a random color
+    tint reset                Reset to terminal default
+    tint completions <shell>  Output shell completions (bash/zsh/fish)
+    tint hook <shell>         Output shell integration code
+    tint --help               Show this help
+    tint --list               List available colors
+    tint --names              List names only
+    tint --query              Query current background
+    tint --version            Show version
 
 INTERACTIVE CONTROLS
     ←/→  h/l              Navigate colors
@@ -1249,9 +1397,14 @@ _tint_main() {
         echo "error: color name cannot be empty" >&2
         exit 1
     fi
-    # Reject extra arguments — all commands take at most one argument
-    if [ $# -gt 1 ] && [ "$1" != "hook" ]; then
+    # Reject extra arguments — most commands take zero, completions/hook take one
+    if [ $# -gt 1 ] && [ "$1" != "completions" ] && [ "$1" != "hook" ]; then
         echo "error: unexpected argument: $2" >&2
+        echo "Run 'tint --help' for usage" >&2
+        exit 1
+    fi
+    if [ $# -gt 2 ]; then
+        echo "error: unexpected argument: $3" >&2
         echo "Run 'tint --help' for usage" >&2
         exit 1
     fi
@@ -1304,6 +1457,34 @@ _tint_main() {
             echo "Run 'tint --help' for usage" >&2
             exit 1
             ;;
+        completions)
+            # ${2-bash} (no colon): defaults only when unset; empty "" hits *)
+            case "${2-bash}" in
+                bash) _tint_completions_bash ;;
+                zsh)  _tint_completions_zsh ;;
+                fish) _tint_completions_fish ;;
+                *)
+                    echo "error: unknown shell: $2" >&2
+                    echo "Supported: bash, zsh, fish" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
+        hook)
+            if [ $# -ne 2 ]; then
+                echo "error: usage: tint hook <bash|zsh>" >&2
+                exit 1
+            fi
+            case "$2" in
+                bash) _tint_hook_bash ;;
+                zsh)  _tint_hook_zsh ;;
+                *)
+                    echo "error: unsupported shell: $2" >&2
+                    echo "Supported shells: bash, zsh" >&2
+                    exit 1
+                    ;;
+            esac
+            ;;
         random)
             local count entry hex name idx
             count=$(_tint_palette_count)
@@ -1323,21 +1504,6 @@ _tint_main() {
             hex="${entry#*:}"
             tint_set "$hex"
             echo "$name $hex"
-            ;;
-        hook)
-            if [ $# -ne 2 ]; then
-                echo "error: usage: tint hook <bash|zsh>" >&2
-                exit 1
-            fi
-            case "$2" in
-                bash) _tint_hook_bash ;;
-                zsh)  _tint_hook_zsh ;;
-                *)
-                    echo "error: unsupported shell: $2" >&2
-                    echo "Supported shells: bash, zsh" >&2
-                    exit 1
-                    ;;
-            esac
             ;;
         reset)
             tint_reset
