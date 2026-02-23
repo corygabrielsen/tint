@@ -41,7 +41,6 @@ tint reset            # Reset to terminal default
 tint completions bash # Output shell completions
 tint -h, --help       # Show help
 tint -l, --list       # List available colors
-tint -n, --names      # List names only
 tint -q, --query      # Query current background
 tint -v, --version    # Show version
 ```
@@ -105,7 +104,6 @@ tint_set "#002b36"        # Set background
 tint_reset                # Reset to default
 tint_pick "$current"      # Interactive picker → selected hex
 tint_list                 # Print all palette entries
-tint_list_names           # Print color names only
 ```
 
 ## Shell Integration
