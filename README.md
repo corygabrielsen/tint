@@ -172,7 +172,7 @@ Tested on: iTerm2, Alacritty, Kitty, Windows Terminal, GNOME Terminal, Konsole
 `tint` uses [OSC 11](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) escape sequences:
 
 - `\e]11;#rrggbb\e\\` - Set background color
-- `\e]11;?\e\\` - Query current background
+- `\e]11;?\e\\` - Get current background
 - `\e]111\e\\` - Reset to default
 
 ## Development

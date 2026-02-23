@@ -237,7 +237,7 @@ tint_reset() {
     ( printf '\033]111\033\\' >/dev/tty ) 2>/dev/null || true
 }
 
-# tint_query - Query current terminal background color
+# tint_query - Get current terminal background color
 #
 # Stdout: #rrggbb hex value
 # Returns: 0 on success, 1 if terminal doesn't respond
@@ -251,7 +251,7 @@ tint_query() {
     return 1
 }
 
-# _tint_query_raw - Run OSC 11 background query in an isolated subshell
+# _tint_query_raw - Read OSC 11 background color in an isolated subshell
 #
 # Uses ( ) instead of { } so trap/stty changes can't leak to caller.
 # All terminal I/O goes through /dev/tty explicitly, so the subshell
@@ -263,7 +263,7 @@ tint_query() {
 # terminals (e.g. TERM=dumb, serial consoles) don't block for seconds.
 #
 # Stdout: #rrggbb hex value
-# Returns: 0 on success, 1 if query fails
+# Returns: 0 on success, 1 if terminal doesn't respond
 _tint_query_raw() (
     old_settings=$(stty -g 2>/dev/null </dev/tty) || exit 1
     stty raw -echo min 0 time 2 </dev/tty 2>/dev/null || {
@@ -818,7 +818,7 @@ EOF
     last_idx=$(( _TINT_PK_TOTAL - 1 ))
 }
 
-# _tint_report_osc11_error - Print diagnostic when OSC 11 query fails
+# _tint_report_osc11_error - Print diagnostic when OSC 11 detection fails
 #
 # Includes environment-specific hints for tmux and SSH.
 _tint_report_osc11_error() {
@@ -826,7 +826,7 @@ _tint_report_osc11_error() {
 Error: terminal does not support OSC 11 (background color escape sequences).
 
 tint uses OSC 11 to get and set the terminal background color.
-Your terminal did not respond to the background color query,
+Your terminal did not respond to the background color request,
 which means tint cannot preview or apply colors.
 ERRMSG
     if [ -n "${TMUX:-}" ]; then
@@ -1438,7 +1438,7 @@ _tint_main() {
             tint_list
             ;;
         -g|--get)
-            tint_query || { echo "Query failed" >&2; exit 1; }
+            tint_query || { echo "error: failed to get current background color" >&2; exit 1; }
             echo
             ;;
         -v|--version)
