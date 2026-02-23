@@ -38,6 +38,7 @@ tint solarized        # Set by name
 tint "#002b36"        # Set by hex
 tint random           # Pick a random color
 tint reset            # Reset to terminal default
+tint hook bash        # Output shell hook for auto-tinting on cd
 tint completions bash # Output shell completions
 tint -h, --help       # Show help
 tint -l, --list       # List available colors
