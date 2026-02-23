@@ -1196,7 +1196,7 @@ complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subc
 complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from hook' -xa 'bash zsh'
 
 # Color names (first argument only)
-complete -c tint -n __tint_needs_command -a '(command tint --list 2>/dev/null | awk '{print $2}')' -d 'Color name'
+complete -c tint -n __tint_needs_command -a "(command tint --list 2>/dev/null | awk '{print \$2}')" -d 'Color name'
 FISH_COMP
 }
 
