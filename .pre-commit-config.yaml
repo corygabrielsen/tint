@@ -31,6 +31,12 @@ repos:
         types: [shell]
         exclude: '^test/'
 
+      - id: prettier
+        name: Format markdown (prettier)
+        entry: npx prettier --write --list-different
+        language: system
+        types: [markdown]
+
       - id: validate-commit-message
         name: Validate commit message (50/72 rule)
         entry: scripts/validate-commit-message.sh --no-pr-suffix
