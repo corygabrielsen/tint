@@ -32,7 +32,7 @@
 #
 # Library usage:
 #   source /path/to/tint
-#   tint_query                # Get current background color
+#   tint_get                  # Get current background color
 #   tint_resolve "solarized"  # Resolve name → #002b36
 #   tint_set "#002b36"        # Set background
 #   tint_reset                # Reset to default
@@ -44,7 +44,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.10.0"
+TINT_VERSION="0.11.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -237,13 +237,13 @@ tint_reset() {
     ( printf '\033]111\033\\' >/dev/tty ) 2>/dev/null || true
 }
 
-# tint_query - Get current terminal background color
+# tint_get - Get current terminal background color
 #
 # Stdout: #rrggbb hex value
 # Returns: 0 on success, 1 if terminal doesn't respond
-tint_query() {
+tint_get() {
     local hex
-    hex=$(_tint_query_raw) || return 1
+    hex=$(_tint_get_raw) || return 1
     if [ -n "$hex" ]; then
         printf '%s' "$hex"
         return 0
@@ -251,7 +251,7 @@ tint_query() {
     return 1
 }
 
-# _tint_query_raw - Read OSC 11 background color in an isolated subshell
+# _tint_get_raw - Read OSC 11 background color in an isolated subshell
 #
 # Uses ( ) instead of { } so trap/stty changes can't leak to caller.
 # All terminal I/O goes through /dev/tty explicitly, so the subshell
@@ -264,7 +264,7 @@ tint_query() {
 #
 # Stdout: #rrggbb hex value
 # Returns: 0 on success, 1 if terminal doesn't respond
-_tint_query_raw() (
+_tint_get_raw() (
     old_settings=$(stty -g 2>/dev/null </dev/tty) || exit 1
     stty raw -echo min 0 time 2 </dev/tty 2>/dev/null || {
         stty "$old_settings" </dev/tty 2>/dev/null
@@ -983,7 +983,7 @@ _tint_init_picker() {
     _TINT_PK_OLD_IDX=0
     _TINT_PK_SCROLLED=0
 
-    if ! _TINT_PK_ORIGINAL_BG=$(tint_query); then
+    if ! _TINT_PK_ORIGINAL_BG=$(tint_get); then
         _tint_report_osc11_error
         return 1
     fi
@@ -1438,7 +1438,7 @@ _tint_main() {
             tint_list
             ;;
         -g|--get)
-            tint_query || { echo "error: failed to get current background color" >&2; exit 1; }
+            tint_get || { echo "error: failed to get current background color" >&2; exit 1; }
             echo
             ;;
         -v|--version)

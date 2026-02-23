@@ -97,7 +97,7 @@ Source `tint` to use its functions in scripts:
 source /path/to/tint
 
 tint_supports_color       # Check if terminal supports OSC colors
-tint_query                # Get current background → #rrggbb
+tint_get                  # Get current background → #rrggbb
 tint_resolve "solarized"  # Resolve name → #002b36
 tint_lookup "solarized"   # Look up in palette → #002b36
 tint_set "#002b36"        # Set background
