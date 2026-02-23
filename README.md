@@ -4,7 +4,7 @@
 [![Latest Release](https://img.shields.io/github/v/release/corygabrielsen/tint)](https://github.com/corygabrielsen/tint/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Terminal background color picker with live preview.
+Set your terminal's background color. Run `tint` to pick interactively, or `tint <color>` to set one directly. Add `.tint` files to directories for automatic color switching.
 
 ```
   ↑/↓ Navigate   Enter: Select   Esc: Cancel

@@ -1209,6 +1209,10 @@ _tint_usage() {
     cat <<'EOF'
 tint - terminal background color picker
 
+Set your terminal's background color. Run tint to pick interactively,
+or tint <color> to set one directly. Add .tint files to directories
+for automatic color switching.
+
 USAGE
     tint                      Interactive picker with live preview
     tint <name|hex>           Set background directly
