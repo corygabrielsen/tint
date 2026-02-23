@@ -39,7 +39,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.4.0"
+TINT_VERSION="0.5.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -1071,6 +1071,7 @@ USAGE
     tint <name|hex>       Set background directly
     tint random           Pick a random color
     tint reset            Reset to terminal default
+    tint hook <shell>     Output shell integration code
     tint --help           Show this help
     tint --list           List available colors
     tint --names          List names only
@@ -1090,6 +1091,24 @@ EXAMPLES
     tint reset            Reset to terminal default
     tint --list           Show all available colors
 
+SHELL INTEGRATION
+    Add to your shell's rc file:
+
+        # bash (~/.bashrc)
+        eval "$(tint hook bash)"
+
+        # zsh (~/.zshrc)
+        eval "$(tint hook zsh)"
+
+    Create .tint files in project directories:
+
+        echo "solarized" > ~/projects/myproject/.tint
+        echo "reset" > ~/projects/personal/.tint    # reset to default
+
+    The hook walks up from $PWD to / looking for the nearest .tint file.
+    Colors are sticky — if no .tint is found, the current color is kept.
+    Place a .tint in ~ for a global default.
+
 CONFIGURATION
     Custom palette file:  export TINT_PALETTE_FILE=~/.config/tint/palette.conf
     Inline palette:       export TINT_PALETTE=$'name1:#hex1\nname2:#hex2'
@@ -1102,6 +1121,127 @@ MORE INFO
 EOF
 }
 
+# _tint_hook_bash - Output bash shell integration code
+#
+# Outputs a self-contained hook that auto-applies .tint colors on directory change.
+# Designed for: eval "$(tint hook bash)"
+_tint_hook_bash() {
+    cat <<'HOOK'
+_tint_hook() {
+    local _tint_ret=$?
+    if [ "${_TINT_HOOK_PWD:-}" = "$PWD" ]; then
+        return "$_tint_ret"
+    fi
+    _TINT_HOOK_PWD="$PWD"
+    local _tint_dir="$PWD" _tint_file=""
+    # Guard against non-absolute PWD (would loop forever in walk-up)
+    case "$_tint_dir" in /*) ;; *) return "$_tint_ret" ;; esac
+    while true; do
+        if [ -f "$_tint_dir/.tint" ] && [ -r "$_tint_dir/.tint" ]; then
+            _tint_file="$_tint_dir/.tint"
+            break
+        fi
+        if [ "$_tint_dir" = "/" ]; then
+            break
+        fi
+        _tint_dir="${_tint_dir%/*}"
+        if [ -z "$_tint_dir" ]; then
+            _tint_dir="/"
+        fi
+    done
+    if [ -z "$_tint_file" ]; then
+        _TINT_HOOK_COLOR=""
+        return "$_tint_ret"
+    fi
+    local _tint_color
+    _tint_color=$(command sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]#.*//; s/[[:space:]]*$//' "$_tint_file" | command grep -m1 -E '^(#[0-9a-fA-F]{3}$|#[0-9a-fA-F]{6}$|[^#-])' || true)
+    if [ -z "$_tint_color" ]; then
+        _TINT_HOOK_COLOR=""
+        return "$_tint_ret"
+    fi
+    # Cache by raw .tint value to skip redundant tint calls. This means
+    # palette changes (e.g., TINT_PALETTE modified by direnv) won't take
+    # effect until the .tint value itself changes or the user runs tint
+    # manually. Hashing the palette on every prompt would be too expensive.
+    if [ "$_tint_color" = "${_TINT_HOOK_COLOR:-}" ]; then
+        return "$_tint_ret"
+    fi
+    _TINT_HOOK_COLOR="$_tint_color"
+    # Uses `tint` by name (standard convention; cf. direnv, zoxide, starship)
+    command tint "$_tint_color" >/dev/null 2>&1 || true
+    return "$_tint_ret"
+}
+# Prepend to PROMPT_COMMAND, handling both string and array forms (Bash 5.1+)
+if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
+    # Array form: prepend so _tint_hook captures $? from user's last command
+    _tint_found=0
+    for _tint_pc in "${PROMPT_COMMAND[@]}"; do
+        [[ "$_tint_pc" == "_tint_hook" ]] && _tint_found=1 && break
+    done
+    (( _tint_found )) || PROMPT_COMMAND=("_tint_hook" "${PROMPT_COMMAND[@]}")
+    unset _tint_found _tint_pc
+elif [[ ! "${PROMPT_COMMAND:-}" =~ (^|[;[:space:]])_tint_hook($|[;[:space:]]) ]]; then
+    PROMPT_COMMAND="_tint_hook${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+fi
+_tint_hook
+HOOK
+}
+
+# _tint_hook_zsh - Output zsh shell integration code
+#
+# Outputs a self-contained hook that auto-applies .tint colors on directory change.
+# Uses chpwd_functions (native zsh dir-change hook, no PWD cache needed).
+# Designed for: eval "$(tint hook zsh)"
+_tint_hook_zsh() {
+    cat <<'HOOK'
+_tint_hook() {
+    # Skip during zle widgets (tab completion, etc.) — zsh's _cd
+    # handler can temporarily change PWD, triggering chpwd spuriously
+    [[ -n "${WIDGET:-}" ]] && return
+    local _tint_dir="$PWD" _tint_file=""
+    # Guard against non-absolute PWD (would loop forever in walk-up)
+    case "$_tint_dir" in /*) ;; *) return ;; esac
+    while true; do
+        if [ -f "$_tint_dir/.tint" ] && [ -r "$_tint_dir/.tint" ]; then
+            _tint_file="$_tint_dir/.tint"
+            break
+        fi
+        if [ "$_tint_dir" = "/" ]; then
+            break
+        fi
+        _tint_dir="${_tint_dir%/*}"
+        if [ -z "$_tint_dir" ]; then
+            _tint_dir="/"
+        fi
+    done
+    if [ -z "$_tint_file" ]; then
+        _TINT_HOOK_COLOR=""
+        return
+    fi
+    local _tint_color
+    _tint_color=$(command sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]#.*//; s/[[:space:]]*$//' "$_tint_file" | command grep -m1 -E '^(#[0-9a-fA-F]{3}$|#[0-9a-fA-F]{6}$|[^#-])' || true)
+    if [ -z "$_tint_color" ]; then
+        _TINT_HOOK_COLOR=""
+        return
+    fi
+    # Cache by raw .tint value to skip redundant tint calls. This means
+    # palette changes (e.g., TINT_PALETTE modified by direnv) won't take
+    # effect until the .tint value itself changes or the user runs tint
+    # manually. Hashing the palette on every prompt would be too expensive.
+    if [ "$_tint_color" = "${_TINT_HOOK_COLOR:-}" ]; then
+        return
+    fi
+    _TINT_HOOK_COLOR="$_tint_color"
+    # Uses `tint` by name (standard convention; cf. direnv, zoxide, starship)
+    command tint "$_tint_color" >/dev/null 2>&1 || true
+}
+if [[ -z "${chpwd_functions[(r)_tint_hook]-}" ]]; then
+    chpwd_functions+=(_tint_hook)
+fi
+_tint_hook
+HOOK
+}
+
 # _tint_main - CLI entry point, dispatch subcommand or launch interactive picker
 _tint_main() {
     # Explicit empty argument is invalid, not interactive mode
@@ -1110,7 +1250,7 @@ _tint_main() {
         exit 1
     fi
     # Reject extra arguments — all commands take at most one argument
-    if [ $# -gt 1 ]; then
+    if [ $# -gt 1 ] && [ "$1" != "hook" ]; then
         echo "error: unexpected argument: $2" >&2
         echo "Run 'tint --help' for usage" >&2
         exit 1
@@ -1183,6 +1323,21 @@ _tint_main() {
             hex="${entry#*:}"
             tint_set "$hex"
             echo "$name $hex"
+            ;;
+        hook)
+            if [ $# -ne 2 ]; then
+                echo "error: usage: tint hook <bash|zsh>" >&2
+                exit 1
+            fi
+            case "$2" in
+                bash) _tint_hook_bash ;;
+                zsh)  _tint_hook_zsh ;;
+                *)
+                    echo "error: unsupported shell: $2" >&2
+                    echo "Supported shells: bash, zsh" >&2
+                    exit 1
+                    ;;
+            esac
             ;;
         reset)
             tint_reset

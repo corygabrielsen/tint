@@ -31,15 +31,15 @@ _load_tint() {
 @test "tint --list shows colors" {
     run tint --list
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "dracula:#282a36" ]]
+    [[ "$output" =~ "solarized:#002b36" ]]
     [[ "$output" =~ "nord:#2e3440" ]]
 }
 
 @test "tint --names shows only names" {
     run tint --names
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "dracula" ]]
-    [[ ! "$output" =~ "#282a36" ]]
+    [[ "$output" =~ "solarized" ]]
+    [[ ! "$output" =~ "#002b36" ]]
 }
 
 @test "tint random picks a palette color" {
@@ -87,7 +87,7 @@ _load_tint() {
 echo "pre_source"
 . "$DIR/tint"
 echo "post_source"
-echo "lookup=\$(tint_lookup dracula)"
+echo "lookup=\$(tint_lookup solarized)"
 INNEREOF
     chmod +x "$tmpdir/caller.sh"
     run "$tmpdir/caller.sh"
@@ -97,7 +97,7 @@ INNEREOF
     local count
     count=$(echo "$output" | grep -c "pre_source")
     [ "$count" -eq 1 ]
-    [[ "$output" =~ "lookup=#282a36" ]]
+    [[ "$output" =~ "lookup=#002b36" ]]
 }
 
 @test "tint sourced from script containing TINT_VERSION does not run main" {
@@ -109,7 +109,7 @@ INNEREOF
 TINT_VERSION=foo
 echo "caller_only"
 . "$DIR/tint"
-echo "lookup=\$(tint_lookup dracula)"
+echo "lookup=\$(tint_lookup solarized)"
 INNEREOF
     chmod +x "$tmpdir/caller.sh"
     run "$tmpdir/caller.sh" --version
@@ -118,7 +118,7 @@ INNEREOF
     # Should see caller output, NOT tint version info
     [[ "$output" =~ "caller_only" ]]
     [[ ! "$output" =~ "tint " ]]
-    [[ "$output" =~ "lookup=#282a36" ]]
+    [[ "$output" =~ "lookup=#002b36" ]]
 }
 
 @test "_tint_is_main guards BASH_SOURCE array access" {
@@ -155,8 +155,8 @@ INNEREOF
     # Source directly - sourcing via function scopes variables to that function
     source "$DIR/tint"
     local result
-    result=$(tint_lookup "dracula")
-    [ "$result" = "#282a36" ]
+    result=$(tint_lookup "solarized")
+    [ "$result" = "#002b36" ]
 }
 
 @test "tint_lookup fails for unknown" {
@@ -227,7 +227,7 @@ INNEREOF
     # Source directly - sourcing via function scopes the variable to that function
     source "$DIR/tint"
     [[ "$TINT_PALETTE" =~ "vscode:#1e1e1e" ]]
-    [[ "$TINT_PALETTE" =~ "dracula:#282a36" ]]
+    [[ "$TINT_PALETTE" =~ "solarized:#002b36" ]]
     [[ "$TINT_PALETTE" =~ "nord:#2e3440" ]]
 }
 
@@ -471,9 +471,9 @@ INNEREOF
 # Helper: set up minimal state for _tint_render_row tests
 _setup_render_row() {
     source "$DIR/tint"
-    _tint_names=(unused "dracula")
-    _tint_hexes=(unused "#282a36")
-    _tint_r=(0 40) _tint_g=(0 42) _tint_b=(0 54)
+    _tint_names=(unused "solarized")
+    _tint_hexes=(unused "#002b36")
+    _tint_r=(0 0) _tint_g=(0 43) _tint_b=(0 54)
     _tint_fg=(30 97)
     _TINT_PK_TOTAL=2
     _TINT_PK_DEFAULT=0
@@ -522,13 +522,13 @@ _setup_render_row() {
 @test "render: row includes color name" {
     _setup_render_row
     _tint_render_row 1 0
-    [[ "$_tint_buf" == *"dracula"* ]]
+    [[ "$_tint_buf" == *"solarized"* ]]
 }
 
 @test "render: row includes hex value" {
     _setup_render_row
     _tint_render_row 1 0
-    [[ "$_tint_buf" == *"282a36"* ]]
+    [[ "$_tint_buf" == *"002b36"* ]]
 }
 
 @test "render: highlighted row uses normal weight" {
@@ -723,7 +723,7 @@ _pick() {
 @test "picker: multiple navigations" {
     _pick down down down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#282a36" ]  # dracula (third palette entry)
+    [ "$PICK_STDOUT" = "#282a36" ]  # third palette entry
 }
 
 @test "picker: j/k vim keys work" {
@@ -1051,4 +1051,580 @@ PYEOF
     cd /tmp
     run bats "$DIR/test/tint.bats" -f "picker: navigate down and select"
     [ "$status" -eq 0 ]
+}
+
+# =============================================================================
+# Hook
+# =============================================================================
+
+@test "tint hook bash outputs shell code" {
+    run tint hook bash
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ _tint_hook ]]
+    [[ "$output" =~ "PROMPT_COMMAND" ]]
+}
+
+@test "tint hook zsh outputs shell code" {
+    run tint hook zsh
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ _tint_hook ]]
+    [[ "$output" =~ "chpwd_functions" ]]
+}
+
+@test "tint hook with no shell arg fails" {
+    run tint hook
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "usage" ]]
+}
+
+@test "tint hook fish fails with unsupported shell" {
+    run tint hook fish
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "unsupported shell" ]]
+}
+
+@test "bash hook is valid bash" {
+    run bash -c "eval \"\$(tint hook bash)\"; type _tint_hook"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "function" ]]
+}
+
+@test "bash hook preserves exit status" {
+    run bash -c "
+        eval \"\$(tint hook bash)\"
+        false
+        _tint_hook
+        echo \$?
+    "
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "1" ]]
+}
+
+@test "PROMPT_COMMAND is idempotent" {
+    run bash -c "
+        eval \"\$(tint hook bash)\"
+        eval \"\$(tint hook bash)\"
+        echo \"\$PROMPT_COMMAND\"
+    "
+    [ "$status" -eq 0 ]
+    local count
+    count=$(echo "${lines[-1]}" | grep -o '_tint_hook' | wc -l)
+    [ "$count" -eq 1 ]
+}
+
+@test "hook reads .tint file" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "solarized" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "solarized" ]]
+}
+
+@test "walk-up finds parent .tint" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "nord" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/child/grandchild"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir/child/grandchild'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "nord" ]]
+}
+
+@test "no .tint means no tint call (sticky)" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    mkdir -p "$tmpdir/nocolor"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir/nocolor'
+        _tint_hook
+        [ ! -f '$tmpdir/log' ] && echo 'NO_CALL'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "NO_CALL" ]]
+}
+
+@test "empty .tint means no tint call" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    touch "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        [ ! -f '$tmpdir/log' ] && echo 'NO_CALL'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "NO_CALL" ]]
+}
+
+@test "unreadable .tint is skipped silently" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "solarized" > "$tmpdir/.tint"
+    chmod 000 "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook 2>'$tmpdir/stderr'
+        if [ ! -f '$tmpdir/log' ] && [ ! -s '$tmpdir/stderr' ]; then echo 'SILENT_SKIP'; fi
+    "
+    chmod 644 "$tmpdir/.tint"
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "SILENT_SKIP" ]]
+}
+
+@test "non-regular .tint is skipped" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    mkfifo "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        [ ! -f '$tmpdir/log' ] && echo 'NO_CALL'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "NO_CALL" ]]
+}
+
+@test "color cache prevents redundant calls" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "solarized" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/sub1" "$tmpdir/sub2"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir/sub1'
+        _tint_hook
+        cd '$tmpdir/sub2'
+        _tint_hook
+        wc -l < '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" =~ ^[[:space:]]*1$ ]]
+}
+
+@test ".tint with reset calls tint reset" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "reset" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "reset" ]]
+}
+
+@test "hook strips inline comments" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "solarized # my theme" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "solarized" ]]
+}
+
+@test "hook skips full-line comments" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    printf '# Project X\n# Dark theme\nsolarized\n' > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "solarized" ]]
+}
+
+@test "hook treats hex color as value not comment" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "#002b36" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "#002b36" ]]
+}
+
+@test "hook treats 3-digit hex color as value not comment" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "#abc" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "#abc" ]]
+}
+
+@test "hook ignores comment-only .tint file" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    printf '# TODO: pick a theme\n# maybe solarized?\n' > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        [ ! -f '$tmpdir/log' ] && echo 'NO_CALL'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "NO_CALL" ]]
+}
+
+@test "hook handles indented hex in .tint" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "  #002b36" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "#002b36" ]]
+}
+
+@test "PROMPT_COMMAND array form preserved" {
+    run bash -c "
+        PROMPT_COMMAND=('existing_func')
+        eval \"\$('$DIR/tint' hook bash)\" 2>&1
+        declare -p PROMPT_COMMAND
+    "
+    [ "$status" -eq 0 ]
+    [[ ! "$output" =~ "local:" ]]
+    [[ "$output" =~ "existing_func" ]]
+    [[ "$output" =~ "_tint_hook" ]]
+}
+
+@test "cache cleared after no-.tint dir allows reapply" {
+    local tmpdir nocolor
+    tmpdir=$(mktemp -d)
+    nocolor=$(mktemp -d)
+    echo "solarized" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    # Simulate: cd to .tint dir, cd to separate no-.tint dir (clears cache),
+    # cd back to .tint dir — should reapply
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cd '$nocolor'
+        _tint_hook
+        cd '$tmpdir'
+        _tint_hook
+        wc -l < '$tmpdir/log'
+    "
+    rm -rf "$tmpdir" "$nocolor"
+    [ "$status" -eq 0 ]
+    # Should have 2 calls: initial + reapply after cache clear
+    [[ "${lines[-1]}" =~ ^[[:space:]]*2$ ]]
+}
+
+@test "bash hook works under set -u" {
+    run bash -c "
+        set -u
+        eval \"\$('$DIR/tint' hook bash)\"
+        type _tint_hook
+    "
+    [ "$status" -eq 0 ]
+}
+
+@test "hook treats ambiguous #-prefixed text as comment" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    printf '#dark theme\nsolarized\n' > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        cat '$tmpdir/log'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "${lines[-1]}" = "solarized" ]]
+}
+
+@test "hook survives set -e with empty .tint" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    touch "$tmpdir/.tint"
+    run bash -c "
+        set -e
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        cd '$tmpdir'
+        _tint_hook
+        echo 'SURVIVED'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "SURVIVED" ]]
+}
+
+@test "hook survives set -e with invalid .tint color" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "notacolor" > "$tmpdir/.tint"
+    run bash -c "
+        set -e
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        cd '$tmpdir'
+        _tint_hook
+        echo 'SURVIVED'
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "SURVIVED" ]]
+}
+
+@test "hook ignores option-like .tint values" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "--list" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "$*" >> "${TINT_LOG}"
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        export TINT_LOG='$tmpdir/log'
+        eval \"\$('$DIR/tint' hook bash)\"
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        rm -f '$tmpdir/log'
+        cd '$tmpdir'
+        _tint_hook
+        if [ -f '$tmpdir/log' ]; then echo 'CALLED'; else echo 'NO_CALL'; fi
+    "
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "NO_CALL" ]]
+}
+
+@test "extra args still rejected for other commands" {
+    run tint solarized extra
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "unexpected argument" ]]
 }
