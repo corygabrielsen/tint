@@ -31,8 +31,8 @@ _load_tint() {
 @test "tint --list shows colors" {
     run tint --list
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "solarized:#002b36" ]]
-    [[ "$output" =~ "nord:#2e3440" ]]
+    [[ "$output" =~ "#002b36".*"solarized" ]]
+    [[ "$output" =~ "#2e3440".*"nord" ]]
 }
 
 @test "tint -h matches --help" {
