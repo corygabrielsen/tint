@@ -44,7 +44,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.8.0"
+TINT_VERSION="0.9.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -176,9 +176,12 @@ tint_resolve() {
 
 # tint_list - Print all palette entries
 #
-# Stdout: name:#hex entries, one per line
+# Stdout: hex and name columns, one per line
 tint_list() {
-    printf '%s\n' "$TINT_PALETTE"
+    local name hex
+    printf '%s\n' "$TINT_PALETTE" | while IFS=: read -r name hex; do
+        printf '%s    %s\n' "$hex" "$name"
+    done
 }
 
 # _tint_palette_get <n> - Get nth palette entry (1-indexed)
@@ -1101,7 +1104,7 @@ _tint_completions() {
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
     else
         local names
-        names=$(command tint --list 2>/dev/null | cut -d: -f1)
+        names=$(command tint --list 2>/dev/null | awk '{print $2}')
         COMPREPLY=( $(compgen -W "$names completions hook random reset" -- "$cur") )
     fi
 }
@@ -1127,7 +1130,7 @@ _tint() {
             'completions:Output shell completions'
             'hook:Output shell integration code'
         )
-        colors=( ${(f)"$(command tint --list 2>/dev/null | cut -d: -f1)"} )
+        colors=( ${(f)"$(command tint --list 2>/dev/null | awk '{print $2}')"} )
 
         # Flags only when user types -; otherwise subcommands + colors
         if [[ "${words[CURRENT]}" == -* ]]; then
@@ -1193,7 +1196,7 @@ complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subc
 complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from hook' -xa 'bash zsh'
 
 # Color names (first argument only)
-complete -c tint -n __tint_needs_command -a '(command tint --list 2>/dev/null | cut -d: -f1)' -d 'Color name'
+complete -c tint -n __tint_needs_command -a "(command tint --list 2>/dev/null | awk '{print \$2}')" -d 'Color name'
 FISH_COMP
 }
 
