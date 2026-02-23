@@ -44,7 +44,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.11.0"
+TINT_VERSION="0.11.1"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
