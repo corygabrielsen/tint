@@ -47,7 +47,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.12.1"
+TINT_VERSION="0.13.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -78,6 +78,7 @@ palenight:#292d3e:#bfc7d5:#292d3e:#f07178:#c3e88d:#ffcb6b:#82aaff:#c792ea:#60ade
 rose-pine:#191724:#e0def4:#26233a:#eb6f92:#9ccfd8:#f6c177:#31748f:#c4a7e7:#ebbcba:#e0def4:#6e6a86:#eb6f92:#9ccfd8:#f6c177:#31748f:#c4a7e7:#ebbcba:#e0def4
 solarized:#002b36:#839496:#073642:#dc322f:#859900:#cf9a6b:#268bd2:#d33682:#2aa198:#eee8d5:#657b83:#cb4b16:#859900:#cf9a6b:#6c71c4:#d33682:#2aa198:#fdf6e3
 synthwave:#262335:#ffffff:#011627:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff:#575656:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff
+tango:#2e3436:#d3d7cf:#000000:#cc0000:#4e9a06:#c4a000:#3465a4:#75507b:#06989a:#d3d7cf:#555753:#ef2929:#8ae234:#fce94f:#739fcf:#ad7fa8:#34e2e2:#eeeeec
 tokyo:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5
 '
 
