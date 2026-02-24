@@ -1,6 +1,6 @@
 #!/bin/sh
 # =============================================================================
-# tint - terminal background color picker
+# tint - terminal theme switcher
 # https://github.com/corygabrielsen/tint
 # Copyright (c) 2026 Cory Gabrielsen
 # License: MIT
@@ -9,7 +9,7 @@
 # Compatibility:
 #   Interactive picker (no args) requires bash for read -n/-t support.
 #   All other commands work with any POSIX shell (dash, ash, sh):
-#     tint <color>    tint completions    tint hook    tint reset
+#     tint <theme>    tint completions    tint hook    tint reset
 #     tint --help     tint --list
 #
 #   Note: We use 'local' throughout. While not in POSIX spec, it's supported by
@@ -22,72 +22,63 @@
 #
 # Usage:
 #   tint                      Interactive picker with live preview
-#   tint <name|hex>           Set directly (e.g., "solarized", "#002b36")
-#   tint random               Pick a random color
+#   tint <name|hex>           Set directly (e.g., "dracula", "#002b36")
+#   tint random               Pick a random theme
 #   tint reset                Reset to terminal default
 #   tint completions <shell>  Output shell completions (bash/zsh/fish)
 #   tint hook <shell>         Output shell integration code
 #   tint -h, --help           Show help
-#   tint -l, --list           List available colors
-#   tint -g, --get            Get current background color
+#   tint -l, --list           List available themes
 #   tint -v, --version        Show version
 #
 # Library usage:
 #   source /path/to/tint
-#   tint_get                  # Get current background color
-#   tint_resolve "solarized"  # Resolve name → #002b36
-#   tint_set "#002b36"        # Set background
-#   tint_reset                # Reset to default
-#   tint_pick "$current"      # Interactive picker (0=selected, 1=cancelled)
+#   tint_resolve "dracula"    # Name → theme string, hex → expanded #rrggbb
+#   tint_set "$theme_string"  # Set theme (bg + fg + 16 ANSI colors)
+#   tint_reset                # Reset to terminal default
+#   tint_pick "$current"      # Interactive picker → theme name
 #
 # Configuration:
-#   TINT_PALETTE_FILE     Custom palette file (one "name:#hex" per line)
+#   TINT_PALETTE_FILE     Custom palette file (one theme per line)
 #   TINT_PALETTE          Inline palette override (newline-separated)
+#
+#   Theme format: name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
+#   (name + bg + fg + 16 ANSI colors, all #RRGGBB hex)
 #
 # =============================================================================
 
-TINT_VERSION="0.11.1"
+TINT_VERSION="0.12.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
 
-# Width of the colored strip in picker rows (index + hex + name)
-_TINT_ROW_WIDTH=41
+# Width of the colored strip in picker rows (index + name)
+_TINT_PICKER_ROW_WIDTH=41
 
 # =============================================================================
 # Palette
 # =============================================================================
 
 _TINT_DEFAULT_PALETTE='
-black:#000000
-vscode:#1e1e1e
-dracula:#282a36
-nord:#2e3440
-gruvbox:#282828
-onedark:#282c34
-monokai:#272822
-catppuccin:#1e1e2e
-tokyo:#1a1b26
-solarized:#002b36
-github:#0d1117
-rose-pine:#191724
-night-owl:#011627
-ayu:#0a0e14
-cobalt:#193549
-darcula:#2b2b2b
-everforest:#2d353b
-forest:#1a2e1a
-horizon:#1c1e26
-kanagawa:#1f1f28
-material:#263238
-midnight:#1a1a2e
-navy:#1b2838
-obsidian:#0e0e10
-oxblood:#2e1a1a
-palenight:#292d3e
-slate:#1e2030
-synthwave:#262335
-ubuntu:#300a24
+ayu:#0a0e14:#b3b1ad:#0a0e14:#ff3333:#c2d94c:#ff8f40:#59c2ff:#ffee99:#95e6cb:#b3b1ad:#4d5566:#ff3333:#c2d94c:#ff8f40:#59c2ff:#ffee99:#95e6cb:#b3b1ad
+catppuccin:#1e1e2e:#cdd6f4:#45475a:#f38ba8:#a6e3a1:#f9e2af:#89b4fa:#f5c2e7:#94e2d5:#bac2de:#585b70:#f38ba8:#a6e3a1:#f9e2af:#89b4fa:#f5c2e7:#94e2d5:#a6adc8
+cobalt:#132738:#ffffff:#000000:#ff0000:#38de21:#ffe50a:#1460d2:#ff005d:#00bbbb:#bbbbbb:#555555:#f40e17:#3bd01d:#edc809:#5555ff:#ff55ff:#6ae3fa:#ffffff
+dracula:#282a36:#f8f8f2:#262626:#e64747:#42e66c:#e4f34a:#9b6bdf:#e356a7:#75d7ec:#f8f8f2:#7a7a7a:#ff5555:#50fa7b:#f1fa8c:#bd93f9:#ff79c6:#8be9fd:#f9f9fb
+everforest:#2d353b:#d3c6aa:#2e383c:#e67e80:#a7c080:#dbbc7f:#7fbbb3:#d699b6:#83c092:#d3c6aa:#5c6a72:#f85552:#8da101:#dfa000:#3a94c5:#df69ba:#35a77c:#dfddc8
+github:#101216:#8b949e:#000000:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#ffffff:#4d4d4d:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#ffffff
+gruvbox:#282828:#ebdbb2:#282828:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#a89984:#928374:#fb4934:#b8bb26:#fabd2f:#83a598:#d3869b:#8ec07c:#ebdbb2
+horizon:#1c1e26:#fdf0ed:#16161c:#e95678:#29d398:#fab795:#26bbd9:#ee64ae:#59e3e3:#fadad1:#232530:#ec6a88:#3fdaa4:#fbc3a7:#3fc6de:#f075b7:#6be6e6:#fdf0ed
+kanagawa:#1f1f28:#dcd7ba:#090618:#c34043:#76946a:#c0a36e:#7e9cd8:#957fb8:#6a9589:#c8c093:#727169:#e82424:#98bb6c:#e6c384:#7fb4ca:#938aa9:#7aa89f:#dcd7ba
+material:#1e282c:#c3c7d1:#073641:#eb606b:#c3e88d:#f7eb95:#80cbc3:#ff2490:#aeddff:#ffffff:#002b36:#eb606b:#c3e88d:#f7eb95:#7dc6bf:#6c71c3:#34434d:#ffffff
+monokai:#272822:#f8f8f2:#75715e:#f92672:#a6e22e:#f4bf75:#66d9ef:#ae81ff:#2aa198:#f9f8f5:#272822:#f92672:#a6e22e:#f4bf75:#66d9ef:#ae81ff:#2aa198:#f8f8f2
+night-owl:#011627:#d6deeb:#011627:#ef5350:#22da6e:#addb67:#82aaff:#c792ea:#21c7a8:#ffffff:#575656:#ef5350:#22da6e:#ffeb95:#82aaff:#c792ea:#7fdbca:#ffffff
+nord:#2e3440:#d8dee9:#3b4252:#bf616a:#a3be8c:#ebcb8b:#81a1c1:#b48ead:#88c0d0:#e5e9f0:#4c566a:#bf616a:#a3be8c:#ebcb8b:#81a1c1:#b48ead:#8fbcbb:#eceff4
+onedark:#1e2127:#5c6370:#000000:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#abb2bf:#5c6370:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#fffefe
+palenight:#292d3e:#bfc7d5:#292d3e:#f07178:#c3e88d:#ffcb6b:#82aaff:#c792ea:#60adec:#abb2bf:#959dcb:#f07178:#c3e88d:#ff5572:#82aaff:#ffcb6b:#676e95:#fffefe
+rose-pine:#191724:#e0def4:#26233a:#eb6f92:#9ccfd8:#f6c177:#31748f:#c4a7e7:#ebbcba:#e0def4:#6e6a86:#eb6f92:#9ccfd8:#f6c177:#31748f:#c4a7e7:#ebbcba:#e0def4
+solarized:#002b36:#839496:#073642:#dc322f:#859900:#cf9a6b:#268bd2:#d33682:#2aa198:#eee8d5:#657b83:#cb4b16:#859900:#cf9a6b:#6c71c4:#d33682:#2aa198:#fdf6e3
+synthwave:#262335:#ffffff:#011627:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff:#575656:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff
+tokyo:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5
 '
 
 # _tint_load_palette - Load and validate palette from env, file, or default
@@ -97,26 +88,26 @@ ubuntu:#300a24
 # Sets: TINT_PALETTE
 _tint_load_palette() {
     # Priority: TINT_PALETTE env > TINT_PALETTE_FILE > default
-    local palette_source="${_TINT_PALETTE_INPUT:-}"
+    local _tint_palette_source="${_TINT_PALETTE_INPUT:-}"
     # Check exists (-f), readable (-r), and guard with :- for set -u safety
     # Use || true so cat failure doesn't abort under set -e
-    if [ -z "$palette_source" ] && [ -n "${TINT_PALETTE_FILE:-}" ] && [ -f "${TINT_PALETTE_FILE:-}" ] && [ -r "${TINT_PALETTE_FILE:-}" ]; then
-        palette_source=$(cat "$TINT_PALETTE_FILE") || palette_source=""
+    if [ -z "$_tint_palette_source" ] && [ -n "${TINT_PALETTE_FILE:-}" ] && [ -f "${TINT_PALETTE_FILE:-}" ] && [ -r "${TINT_PALETTE_FILE:-}" ]; then
+        _tint_palette_source=$(cat "$TINT_PALETTE_FILE") || _tint_palette_source=""
     fi
-    if [ -z "$palette_source" ]; then
-        palette_source="$_TINT_DEFAULT_PALETTE"
+    if [ -z "$_tint_palette_source" ]; then
+        _tint_palette_source="$_TINT_DEFAULT_PALETTE"
     fi
 
     # Filter valid palette lines using sed and grep pipeline
     # 1. Strip inline comments and whitespace
     # 2. Remove empty lines and comment-only lines
-    # 3. Keep only valid name:#hexcode format
+    # 3. Keep only valid theme entries (name + 18 hex values)
     # Note: || true prevents exit under set -e if grep finds no matches
-    TINT_PALETTE=$(printf '%s\n' "$palette_source" | \
-        sed 's/ #.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | \
+    TINT_PALETTE=$(printf '%s\n' "$_tint_palette_source" | \
+        sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | \
         grep -v '^$' | \
         grep -v '^#' | \
-        grep -E '^[a-zA-Z0-9][a-zA-Z0-9_-]*:#[0-9a-fA-F]{6}$' || true)
+        grep -E '^[a-zA-Z0-9][a-zA-Z0-9_-]*(:#[0-9a-fA-F]{6}){18}$' || true)
 }
 
 # Initialize palette
@@ -143,46 +134,53 @@ _TINT_LOADED_PALETTE="$TINT_PALETTE"
 # Palette Functions
 # =============================================================================
 
-# tint_lookup <name> - Look up color by name
+# tint_lookup <name> - Look up theme by name
 #
-# Stdout: #rrggbb hex value
+# Stdout: full theme string (#bg:#fg:#00:#01:...:#15)
 # Returns: 0 if found, 1 if not found
 tint_lookup() {
     local name="$1"
-    local hex
-    # Use awk for exact string matching - avoids regex metacharacter issues
-    # (e.g., 'd.*' won't match 'dracula', '[' won't cause errors)
-    hex=$(printf '%s\n' "$TINT_PALETTE" | awk -F: -v name="$name" '$1 == name {print $2; exit}')
-    if [ -n "$hex" ]; then
-        printf '%s' "$hex"
-        return 0
-    fi
+    local line
+    # case pattern is quoted so $name matches literally, not as a glob.
+    while IFS= read -r line; do
+        case "$line" in
+            "$name:"*) printf '%s' "${line#*:}"; return 0 ;;
+        esac
+    done <<EOF
+$TINT_PALETTE
+EOF
     return 1
 }
 
-# tint_resolve <input> - Resolve name/hex/"reset" to hex (empty for "reset")
+# tint_resolve <input> - Resolve name/hex/"reset" to theme value
 #
-# Stdout: #rrggbb hex value (empty for "reset")
+# For hex input: returns #rrggbb. For name: returns full theme string.
+# For "reset": returns empty.
 # Returns: 0 on success, 1 on failure (safe under set -e)
 tint_resolve() {
     local input="$1"
     [ "$input" = "reset" ] && return 0
-    # Expand 3-digit hex to 6-digit (#abc → #aabbcc)
-    if printf '%s\n' "$input" | grep -qE '^#[0-9a-fA-F]{3}$'; then
-        input="#$(printf '%s' "$input" | sed 's/^#\(.\)\(.\)\(.\)$/\1\1\2\2\3\3/')"
-    fi
-    printf '%s\n' "$input" | grep -qE '^#[0-9a-fA-F]{6}$' && { printf '%s' "$input"; return 0; }
+    case "$input" in
+        '#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
+            printf '%s' "$input"; return 0 ;;
+        '#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F])
+            # Expand 3-digit hex to 6-digit (#abc → #aabbcc)
+            local h="${input#\#}"
+            local c1="${h%??}" c3="${h#??}" c2
+            c2="${h#?}"; c2="${c2%?}"
+            printf '%s' "#${c1}${c1}${c2}${c2}${c3}${c3}"; return 0 ;;
+    esac
     # Guard lookup failure to prevent set -e from aborting caller
     tint_lookup "$input" || return 1
 }
 
 # tint_list - Print all palette entries
 #
-# Stdout: hex and name columns, one per line
+# Stdout: theme names, one per line
 tint_list() {
-    local name hex
-    printf '%s\n' "$TINT_PALETTE" | while IFS=: read -r name hex; do
-        printf '%s    %s\n' "$hex" "$name"
+    local name _rest
+    printf '%s\n' "$TINT_PALETTE" | while IFS=: read -r name _rest; do
+        printf '%s\n' "$name"
     done
 }
 
@@ -208,7 +206,17 @@ _tint_palette_count() {
 # Terminal Functions
 # =============================================================================
 
-# tint_set <hex> - Set terminal background via OSC 11
+# tint_set <theme|bg> [<fg>] - Set terminal colors from theme string or bare hex
+#
+# Theme string mode (#bg:#fg:#00:#01:...:#15):
+#   tint_set "theme_str"        — set bg, fg, and 16 ANSI colors from theme
+#   tint_set "theme_str" "#fg"  — override theme fg with explicit fg
+#   tint_set "theme_str" ""     — set bg + ANSI colors, leave fg untouched
+#
+# Bare hex mode (#RRGGBB):
+#   tint_set "#bg"        — auto-compute fg from background luma
+#   tint_set "#bg" "#fg"  — use explicit fg
+#   tint_set "#bg" ""     — set bg only, leave fg untouched (unknown original)
 #
 # Why >/dev/tty 2>/dev/null?
 #
@@ -230,30 +238,51 @@ _tint_palette_count() {
 #   - This pattern works across bash, dash, and other POSIX shells
 #
 tint_set() {
-    ( printf '\033]11;%s\033\\' "$1" >/dev/tty ) 2>/dev/null || true
+    local bg fg_seq="" ansi_seq=""
+    case "$1" in
+        *:*)
+            # Full theme string: #bg:#fg:#00:#01:...:#15
+            bg="${1%%:*}"
+            local rest="${1#*:}" _tint_theme_fg
+            _tint_theme_fg="${rest%%:*}"
+            rest="${rest#*:}"
+            if [ $# -ge 2 ] && [ -n "$2" ]; then
+                fg_seq="${_TINT_ESC}]10;${2}${_TINT_ESC}\\"
+            elif [ $# -lt 2 ]; then
+                fg_seq="${_TINT_ESC}]10;${_tint_theme_fg}${_TINT_ESC}\\"
+            fi
+            # Build OSC 4;N;color sequences for 16 ANSI colors
+            local i=0 color
+            while [ -n "$rest" ]; do
+                color="${rest%%:*}"
+                ansi_seq="${ansi_seq}${_TINT_ESC}]4;${i};${color}${_TINT_ESC}\\"
+                i=$((i + 1))
+                if [ "$rest" = "${rest#*:}" ]; then break; fi
+                rest="${rest#*:}"
+            done
+            ;;
+        *)
+            # Bare hex
+            bg="$1"
+            if [ $# -ge 2 ] && [ -n "$2" ]; then
+                fg_seq="${_TINT_ESC}]10;${2}${_TINT_ESC}\\"
+            elif [ $# -lt 2 ]; then
+                fg_seq="${_TINT_ESC}]10;$(_tint_fg_for_bg "$bg")${_TINT_ESC}\\"
+            fi
+            ;;
+    esac
+    # When $# >= 2 but $2 is empty: skip OSC 10 (caller doesn't know the
+    # original foreground, so leave it untouched rather than guessing)
+    ( printf '%s' "${_TINT_ESC}]11;${bg}${_TINT_ESC}\\${fg_seq}${ansi_seq}" >/dev/tty ) 2>/dev/null || true
 }
 
-# tint_reset - Reset to terminal profile default via OSC 111
+# tint_reset - Reset to terminal profile default via OSC 111 (bg) + OSC 110 (fg) + OSC 104 (ANSI)
 # See tint_set for /dev/tty handling explanation.
 tint_reset() {
-    ( printf '\033]111\033\\' >/dev/tty ) 2>/dev/null || true
+    ( printf '\033]111\033\\\033]110\033\\\033]104\033\\' >/dev/tty ) 2>/dev/null || true
 }
 
-# tint_get - Get current terminal background color
-#
-# Stdout: #rrggbb hex value
-# Returns: 0 on success, 1 if terminal doesn't respond
-tint_get() {
-    local hex
-    hex=$(_tint_get_raw) || return 1
-    if [ -n "$hex" ]; then
-        printf '%s' "$hex"
-        return 0
-    fi
-    return 1
-}
-
-# _tint_get_raw - Read OSC 11 background color in an isolated subshell
+# _tint_query_osc_color <osc_code> - Query terminal for an OSC color
 #
 # Uses ( ) instead of { } so trap/stty changes can't leak to caller.
 # All terminal I/O goes through /dev/tty explicitly, so the subshell
@@ -266,7 +295,7 @@ tint_get() {
 #
 # Stdout: #rrggbb hex value
 # Returns: 0 on success, 1 if terminal doesn't respond
-_tint_get_raw() (
+_tint_query_osc_color() (
     old_settings=$(stty -g 2>/dev/null </dev/tty) || exit 1
     stty raw -echo min 0 time 2 </dev/tty 2>/dev/null || {
         stty "$old_settings" </dev/tty 2>/dev/null
@@ -274,7 +303,7 @@ _tint_get_raw() (
     }
     trap 'stty "$old_settings" </dev/tty 2>/dev/null' EXIT
 
-    printf '\033]11;?\033\\' >/dev/tty
+    printf '\033]%s;?\033\\' "$1" >/dev/tty
     response=$(dd bs=64 count=1 2>/dev/null </dev/tty | tr -d '\000')
 
     # Explicit restore (trap also fires on exit as safety net)
@@ -286,8 +315,17 @@ _tint_get_raw() (
     # terminals respond with 4 digits: xterm, VTE, urxvt, kitty, alacritty, foot (since
     # 2022). The regex requires 2+ digits, which safely handles all real-world responses.
     # See: https://codeberg.org/dnkl/foot/issues/971 (foot aligned to 4-digit standard)
-    printf '%s' "$response" | sed -n 's/.*rgb:\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*\/\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*\/\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*.*/#\1\2\3/p'
+    hex=$(printf '%s' "$response" | sed -n 's/.*rgb:\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*\/\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*\/\([0-9a-fA-F]\{2\}\)[0-9a-fA-F]*.*/#\1\2\3/p' | tr '[:upper:]' '[:lower:]')
+    # Empty means no rgb: in response (timeout or unparsable) — treat as failure
+    [ -n "$hex" ] || exit 1
+    printf '%s' "$hex"
 )
+
+# _tint_query_terminal_bg - Query terminal for current background color (OSC 11)
+_tint_query_terminal_bg() { _tint_query_osc_color 11; }
+
+# _tint_query_terminal_fg - Query terminal for current foreground color (OSC 10)
+_tint_query_terminal_fg() { _tint_query_osc_color 10; }
 
 # tint_supports_color - Check if terminal likely supports OSC color sequences
 #
@@ -312,60 +350,96 @@ tint_supports_color() {
     return 0
 }
 
+# _tint_fg_for_bg <hex> - Compute readable foreground color for a background
+#
+# Returns #000000 (black) for light backgrounds, #ffffff (white) for dark.
+# Uses BT.601 luma: (R*299 + G*587 + B*114) / 1000, threshold > 128.
+#
+# POSIX-portable: uses printf '%d' "0x..." for hex-to-decimal conversion
+# and parameter expansion (${hex#??}) for substring advancement.
+#
+# Stdout: #000000 or #ffffff
+_tint_fg_for_bg() {
+    local hex="$1" r g b luma
+    # Strip leading # if present
+    hex="${hex#\#}"
+    r=$(printf '%d' "0x${hex%????}")
+    hex="${hex#??}"
+    g=$(printf '%d' "0x${hex%??}")
+    hex="${hex#??}"
+    b=$(printf '%d' "0x$hex")
+    luma=$(( (r * 299 + g * 587 + b * 114) / 1000 ))
+    if [ "$luma" -gt 128 ]; then
+        printf '#000000'
+    else
+        printf '#ffffff'
+    fi
+}
+
 # =============================================================================
 # Interactive Picker
 # =============================================================================
 #
 # State reference (all globals used by the picker subsystem):
 #
-#   Picker model          Type  Description      Set by
-#   ────────────────────  ────  ───────────────  ───────────────────────────────────────────────────
-#   _TINT_PK_IDX          int   cursor pos       init_picker, find_default_index, model_move_cursor
-#   _TINT_PK_OLD_IDX      int   prev cursor pos  init_picker, model_move_cursor
-#   _TINT_PK_DEFAULT      int   start pos        init_picker, find_default_index
-#   _TINT_PK_TOTAL        int   entry count      load_palette_arrays
-#   _TINT_PK_VISIBLE      int   window rows      init_picker
-#   _TINT_PK_KEY          str   last keypress    read_key
-#   _TINT_PK_EXIT_REASON  str   exit cause       install_signal_traps, accept_selection, picker_loop
-#   _TINT_PK_SCROLLED     int   window shifted   init_picker, update_scroll_window
-#   _TINT_PK_WIN_START    int   top visible idx  init_picker, update_scroll_window
-#   _TINT_PK_WIN_END      int   bot visible idx  init_picker, update_scroll_window
+#   Picker model                     Type  Description      Set by
+#   ───────────────────────────────  ────  ───────────────  ───────────────────────────────────────────────────
+#   _TINT_PICKER_IDX                 int   cursor pos       init_picker, find_default_index, model_move_cursor
+#   _TINT_PICKER_OLD_IDX             int   prev cursor pos  init_picker, model_move_cursor
+#   _TINT_PICKER_DEFAULT             int   star marker pos  init_picker, find_default_index
+#   _TINT_PICKER_ORIGINAL_THEME_IDX  int   original theme   init_picker (auto-detect from queried bg)
+#   _TINT_PICKER_TOTAL               int   entry count      load_palette_arrays
+#   _TINT_PICKER_VISIBLE             int   window rows      init_picker
+#   _TINT_PICKER_KEY                 str   last keypress    read_key
+#   _TINT_PICKER_EXIT_REASON         str   exit cause       install_signal_traps, accept_selection, picker_loop
+#   _TINT_PICKER_SCROLLED            int   window shifted   init_picker, update_scroll_window
+#   _TINT_PICKER_WIN_START           int   top visible idx  init_picker, update_scroll_window
+#   _TINT_PICKER_WIN_END             int   bot visible idx  init_picker, update_scroll_window
 #
-#   Resource flags            Type             Description     Set by
-#   ────────────────────────  ───────────────  ──────────────  ───────────────────────────────────────────────────
-#   _TINT_PK_CURSOR_HIDDEN    bool             cursor hidden   install_signal_traps, hide_cursor, restore_terminal
-#   _TINT_PK_TRAPS_INSTALLED  bool             traps set       install_signal_traps, restore_terminal
-#   _TINT_PK_SAVED_STTY       str              original stty   install_signal_traps, setup_terminal
-#   _TINT_PK_RENDERED_ROWS    int              rows on screen  init_picker, render_all, restore_terminal
-#   _TINT_PK_PREVIEWED        bool             preview active  init_picker, apply_preview_color
-#   _TINT_PK_INTERRUPTED      int (0/130/143)  signal code     install_signal_traps, traps
-#   _TINT_PK_ORIGINAL_BG      str              starting bg     init_picker
+#   Resource flags                Type             Description     Set by
+#   ────────────────────────────  ───────────────  ──────────────  ───────────────────────────────────────────────────
+#   _TINT_PICKER_CURSOR_HIDDEN    bool             cursor hidden   install_signal_traps, hide_cursor, restore_terminal
+#   _TINT_PICKER_TRAPS_INSTALLED  bool             traps set       install_signal_traps, restore_terminal
+#   _TINT_PICKER_SAVED_STTY       str              original stty   install_signal_traps, setup_terminal
+#   _TINT_PICKER_RENDERED_ROWS    int              rows on screen  init_picker, render_all, restore_terminal
+#   _TINT_PICKER_PREVIEWED        bool             preview active  init_picker, apply_preview_color
+#   _TINT_PICKER_INTERRUPTED      int (0/130/143)  signal code     install_signal_traps, traps
+#   _TINT_PICKER_ORIGINAL_BG      str              starting bg     init_picker
+#   _TINT_PICKER_ORIGINAL_FG      str              starting fg     init_picker
 #
 #   Palette arrays (0 = "unchanged" entry)
-#   Name            Type  Description
-#   ──────────────  ────  ──────────────────────────────
-#   _tint_names[i]  str   display name
-#   _tint_hexes[i]  str   #RRGGBB
-#   _tint_r/g/b[i]  int   RGB components
-#   _tint_fg[i]     str   foreground ANSI ("30" or "97")
+#
+#   _tint_themes[i] is the source of truth — the full colon-delimited theme
+#   string (#bg:#fg:#00:...:#15). The other arrays are denormalized caches
+#   to avoid repeated string parsing in the render loop (runs every keystroke).
+#
+#   Name                      Type  Description
+#   ────────────────────────  ────  ────────────────────────────────────────────
+#   _tint_themes_name[i]      str   theme name (unique identifier)
+#   _tint_themes_bg[i]        str   bg hex (#RRGGBB) — for render-row color gate
+#   _tint_themes[i]           str   full theme value (#bg:#fg:#00:...:#15)
+#   _tint_themes_fg[i]        str   fg hex (#RRGGBB) — pre-lowercased from theme
+#   _tint_themes_bg_r/g/b[i]  int   bg RGB components (for ANSI 48;2;r;g;b)
+#   _tint_picker_text_sgr[i]  str   computed fg ANSI attr ("30" or "97")
 #
 #   Session context (locals in tint_pick, visible via dynamic scoping)
-#   Name                Type  Description
-#   ──────────────────  ────  ────────────────────────────
-#   _tint_saved_traps   str   caller's INT/TERM traps
-#   _tint_saved_exit    str   caller's EXIT trap
-#   _tint_esc_timeout   str   escape sequence timeout
-#   _tint_read_timeout  str   keystroke polling timeout
-#   last_idx            int   alias for _TINT_PK_TOTAL - 1
+#   Name                 Type  Description
+#   ───────────────────  ────  ────────────────────────────────
+#   _tint_saved_traps    str   caller's INT/TERM traps
+#   _tint_saved_exit     str   caller's EXIT trap
+#   _tint_esc_timeout    str   escape sequence timeout
+#   _tint_read_timeout   str   keystroke polling timeout
+#   _tint_palette_count  int   number of palette entries
+#   _tint_last_idx       int   alias for _TINT_PICKER_TOTAL - 1
 
 # --- Picker: Terminal Helpers ---
 
 # _tint_hide_cursor - Hide the terminal cursor and set the hidden flag
 #
-# Sets: _TINT_PK_CURSOR_HIDDEN
+# Sets: _TINT_PICKER_CURSOR_HIDDEN
 # Flag set before write so a signal between them errs on the safe side
 # (_tint_restore_terminal shows a cursor that was never hidden — harmless no-op).
-_tint_hide_cursor() { _TINT_PK_CURSOR_HIDDEN=1; printf '\e[?25l' >/dev/tty; }
+_tint_hide_cursor() { _TINT_PICKER_CURSOR_HIDDEN=1; printf '\e[?25l' >/dev/tty; }
 
 # _tint_get_terminal_height - Get the number of terminal lines
 #
@@ -382,11 +456,11 @@ _tint_get_terminal_height() {
 # Cursor is on the scroll indicator line (N rows below first palette row,
 # which is 1 line below the hint line).
 # Move up to the hint line and erase everything below.
-# Note: if a signal fires mid-render, _TINT_PK_RENDERED_ROWS may not match
+# Note: if a signal fires mid-render, _TINT_PICKER_RENDERED_ROWS may not match
 # the actual cursor position, causing \e[J to clear a few extra lines.
 # Terminal clamps cursor-up at row 1, so this is cosmetic and transient.
 _tint_erase_picker() {
-    local n="${_TINT_PK_RENDERED_ROWS:-0}"
+    local n="${_TINT_PICKER_RENDERED_ROWS:-0}"
     if [ "$n" -gt 0 ]; then
         printf '\e[%dA' "$(( n + 1 ))" >/dev/tty
     fi
@@ -396,36 +470,75 @@ _tint_erase_picker() {
 
 # --- Picker: Teardown ---
 
+# _tint_restore_original_colors - Restore terminal to pre-picker colors
+#
+# Uses the best available strategy:
+#   1. Original bg matched a known theme → apply full theme (bg + ANSI),
+#      using queried fg if available (user may have set fg independently)
+#   2. Original bg queried but no theme match → set bg + fg, reset ANSI
+#      palette to terminal defaults (can't query individual ANSI colors)
+#   3. Nothing queried → full reset (OSC 110 + 111 + 104)
+#
+# No-op if no preview was ever applied (_TINT_PICKER_PREVIEWED=0), because
+# terminal state hasn't been modified.
+#
+# Reads: _TINT_PICKER_PREVIEWED, _TINT_PICKER_ORIGINAL_THEME_IDX, _TINT_PICKER_ORIGINAL_BG,
+#   _TINT_PICKER_ORIGINAL_FG, _tint_themes[] (via dynamic scoping)
+_tint_restore_original_colors() {
+    if [ "${_TINT_PICKER_PREVIEWED:-0}" -eq 0 ]; then return; fi
+    # shellcheck disable=SC3054
+    if [ "${_TINT_PICKER_ORIGINAL_THEME_IDX:-0}" -gt 0 ] && [ -n "${_tint_themes[$_TINT_PICKER_ORIGINAL_THEME_IDX]+x}" ]; then
+        # Original bg matched a known theme — restore bg + ANSI from theme.
+        # Use queried fg if available; otherwise let the theme's fg apply.
+        # shellcheck disable=SC3054
+        if [ -n "${_TINT_PICKER_ORIGINAL_FG:-}" ]; then
+            tint_set "${_tint_themes[$_TINT_PICKER_ORIGINAL_THEME_IDX]}" "$_TINT_PICKER_ORIGINAL_FG"
+        else
+            tint_set "${_tint_themes[$_TINT_PICKER_ORIGINAL_THEME_IDX]}"
+        fi
+    elif [ -n "${_TINT_PICKER_ORIGINAL_BG:-}" ]; then
+        if [ -z "${_TINT_PICKER_ORIGINAL_FG:-}" ]; then
+            # Can't restore fg (query failed) — reset to terminal default
+            ( printf '\033]110\033\\' >/dev/tty ) 2>/dev/null || true
+        fi
+        tint_set "$_TINT_PICKER_ORIGINAL_BG" "${_TINT_PICKER_ORIGINAL_FG:-}"
+        # No theme match and no way to query ANSI originals (no terminal
+        # supports querying all 16 ANSI colors). Resetting to defaults is
+        # the least-bad option: it restores the terminal's configured theme
+        # palette rather than leaving previewed ANSI colors stuck.
+        ( printf '\033]104\033\\' >/dev/tty ) 2>/dev/null || true
+    else
+        tint_reset
+    fi
+}
+
 # _tint_restore_terminal - Unified teardown for all exit paths
 #
 # Idempotent: safe to call multiple times (signal handler + normal return).
 # Uses resource flags to skip work that was never started or already undone.
+# Delegates color restoration to _tint_restore_original_colors.
 #
-# Reads: _TINT_PK_EXIT_REASON (decides whether to restore background color)
+# Reads: _TINT_PICKER_EXIT_REASON (decides whether to restore original theme)
 _tint_restore_terminal() {
-    if [ "${_TINT_PK_CURSOR_HIDDEN:-0}" -eq 1 ]; then
+    if [ "${_TINT_PICKER_CURSOR_HIDDEN:-0}" -eq 1 ]; then
         printf '\e[?25h' >/dev/tty
-        _TINT_PK_CURSOR_HIDDEN=0
+        _TINT_PICKER_CURSOR_HIDDEN=0
     fi
-    if [ "${_TINT_PK_RENDERED_ROWS:-0}" -gt 0 ]; then
+    if [ "${_TINT_PICKER_RENDERED_ROWS:-0}" -gt 0 ]; then
         _tint_erase_picker
-        _TINT_PK_RENDERED_ROWS=0
+        _TINT_PICKER_RENDERED_ROWS=0
     fi
-    if [ -n "${_TINT_PK_SAVED_STTY:-}" ]; then
-        stty "$_TINT_PK_SAVED_STTY" </dev/tty 2>/dev/null
+    if [ -n "${_TINT_PICKER_SAVED_STTY:-}" ]; then
+        stty "$_TINT_PICKER_SAVED_STTY" </dev/tty 2>/dev/null
     fi
-    if [ "$_TINT_PK_EXIT_REASON" != "confirm" ]; then
-        if [ -n "${_TINT_PK_ORIGINAL_BG:-}" ]; then
-            tint_set "$_TINT_PK_ORIGINAL_BG"
-        elif [ "${_TINT_PK_PREVIEWED:-0}" -eq 1 ]; then
-            tint_reset
-        fi
+    if [ "$_TINT_PICKER_EXIT_REASON" != "confirm" ]; then
+        _tint_restore_original_colors
     fi
-    if [ "${_TINT_PK_TRAPS_INSTALLED:-0}" -eq 1 ]; then
+    if [ "${_TINT_PICKER_TRAPS_INSTALLED:-0}" -eq 1 ]; then
         trap - EXIT INT TERM
         eval "${_tint_saved_traps:-}"
         eval "${_tint_saved_exit:-}"
-        _TINT_PK_TRAPS_INSTALLED=0
+        _TINT_PICKER_TRAPS_INSTALLED=0
     fi
 }
 
@@ -435,77 +548,77 @@ _tint_restore_terminal() {
 #
 # Pure model: no terminal I/O.
 #
-# Sets: _TINT_PK_IDX, _TINT_PK_OLD_IDX
+# Sets: _TINT_PICKER_IDX, _TINT_PICKER_OLD_IDX
 _tint_model_move_cursor() {
-    _TINT_PK_OLD_IDX=$_TINT_PK_IDX
+    _TINT_PICKER_OLD_IDX=$_TINT_PICKER_IDX
     if [ "$1" = "up" ]; then
-        _TINT_PK_IDX=$(( _TINT_PK_IDX > 0 ? _TINT_PK_IDX - 1 : last_idx ))
+        _TINT_PICKER_IDX=$(( _TINT_PICKER_IDX > 0 ? _TINT_PICKER_IDX - 1 : _tint_last_idx ))
     else
-        _TINT_PK_IDX=$(( _TINT_PK_IDX < last_idx ? _TINT_PK_IDX + 1 : 0 ))
+        _TINT_PICKER_IDX=$(( _TINT_PICKER_IDX < _tint_last_idx ? _TINT_PICKER_IDX + 1 : 0 ))
     fi
 }
 
-# _tint_update_scroll_window - Compute the scroll window that keeps _TINT_PK_IDX visible
+# _tint_update_scroll_window - Compute the scroll window that keeps _TINT_PICKER_IDX visible
 #
 # Pure model: no terminal I/O.
 # Edge-triggered: only shifts the window when the cursor would move off-screen.
 # This minimizes full redraws (most keypresses stay within the window and use
 # incremental rendering via _tint_render_changed_rows).
 #
-# Sets: _TINT_PK_WIN_START, _TINT_PK_WIN_END, _TINT_PK_SCROLLED
+# Sets: _TINT_PICKER_WIN_START, _TINT_PICKER_WIN_END, _TINT_PICKER_SCROLLED
 _tint_update_scroll_window() {
-    local old_start=$_TINT_PK_WIN_START
-    if [ "$_TINT_PK_VISIBLE" -ge "$_TINT_PK_TOTAL" ]; then
-        _TINT_PK_WIN_START=0
-        _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
-    elif [ "${_TINT_PK_WIN_END:-0}" -eq 0 ] && [ "$_TINT_PK_RENDERED_ROWS" -eq 0 ]; then
+    local old_start=$_TINT_PICKER_WIN_START
+    if [ "$_TINT_PICKER_VISIBLE" -ge "$_TINT_PICKER_TOTAL" ]; then
+        _TINT_PICKER_WIN_START=0
+        _TINT_PICKER_WIN_END=$(( _TINT_PICKER_TOTAL - 1 ))
+    elif [ "${_TINT_PICKER_WIN_END:-0}" -eq 0 ] && [ "$_TINT_PICKER_RENDERED_ROWS" -eq 0 ]; then
         # Initial window: center around cursor
-        local half=$(( _TINT_PK_VISIBLE / 2 ))
-        _TINT_PK_WIN_START=$(( _TINT_PK_IDX - half ))
-        if [ "$_TINT_PK_WIN_START" -lt 0 ]; then _TINT_PK_WIN_START=0; fi
-        _TINT_PK_WIN_END=$(( _TINT_PK_WIN_START + _TINT_PK_VISIBLE - 1 ))
-        if [ "$_TINT_PK_WIN_END" -ge "$_TINT_PK_TOTAL" ]; then
-            _TINT_PK_WIN_END=$(( _TINT_PK_TOTAL - 1 ))
-            _TINT_PK_WIN_START=$(( _TINT_PK_WIN_END - _TINT_PK_VISIBLE + 1 ))
+        local half=$(( _TINT_PICKER_VISIBLE / 2 ))
+        _TINT_PICKER_WIN_START=$(( _TINT_PICKER_IDX - half ))
+        if [ "$_TINT_PICKER_WIN_START" -lt 0 ]; then _TINT_PICKER_WIN_START=0; fi
+        _TINT_PICKER_WIN_END=$(( _TINT_PICKER_WIN_START + _TINT_PICKER_VISIBLE - 1 ))
+        if [ "$_TINT_PICKER_WIN_END" -ge "$_TINT_PICKER_TOTAL" ]; then
+            _TINT_PICKER_WIN_END=$(( _TINT_PICKER_TOTAL - 1 ))
+            _TINT_PICKER_WIN_START=$(( _TINT_PICKER_WIN_END - _TINT_PICKER_VISIBLE + 1 ))
         fi
-    elif [ "$_TINT_PK_IDX" -lt "$_TINT_PK_WIN_START" ]; then
-        _TINT_PK_WIN_START=$_TINT_PK_IDX
-        _TINT_PK_WIN_END=$(( _TINT_PK_WIN_START + _TINT_PK_VISIBLE - 1 ))
-    elif [ "$_TINT_PK_IDX" -gt "$_TINT_PK_WIN_END" ]; then
-        _TINT_PK_WIN_END=$_TINT_PK_IDX
-        _TINT_PK_WIN_START=$(( _TINT_PK_WIN_END - _TINT_PK_VISIBLE + 1 ))
+    elif [ "$_TINT_PICKER_IDX" -lt "$_TINT_PICKER_WIN_START" ]; then
+        _TINT_PICKER_WIN_START=$_TINT_PICKER_IDX
+        _TINT_PICKER_WIN_END=$(( _TINT_PICKER_WIN_START + _TINT_PICKER_VISIBLE - 1 ))
+    elif [ "$_TINT_PICKER_IDX" -gt "$_TINT_PICKER_WIN_END" ]; then
+        _TINT_PICKER_WIN_END=$_TINT_PICKER_IDX
+        _TINT_PICKER_WIN_START=$(( _TINT_PICKER_WIN_END - _TINT_PICKER_VISIBLE + 1 ))
     fi
-    if [ "$_TINT_PK_WIN_START" -ne "$old_start" ]; then
-        _TINT_PK_SCROLLED=1
+    if [ "$_TINT_PICKER_WIN_START" -ne "$old_start" ]; then
+        _TINT_PICKER_SCROLLED=1
     else
-        _TINT_PK_SCROLLED=0
+        _TINT_PICKER_SCROLLED=0
     fi
 }
 
 # --- Picker: View ---
 
-# _tint_render_row <row_idx> <highlighted> - Append one formatted picker row to _tint_buf
+# _tint_render_row <row_idx> <highlighted> - Append one formatted picker row to _tint_picker_buf
 #
 # Accessed via dynamic scoping from the caller. Each row has:
 #   - A 2-char prefix: "> " (cursor), "* " (default/current), or "  "
 #   - A colored background strip with index, hex value, and name
 #   - Highlighted rows are normal weight; others are dim (\e[2m)
 #
-# Reads: _TINT_PK_DEFAULT, _TINT_PK_TOTAL, _TINT_PK_ORIGINAL_BG,
-#   _tint_names[], _tint_hexes[], _tint_r[], _tint_g[], _tint_b[], _tint_fg[]
+# Reads: _TINT_PICKER_DEFAULT, _TINT_PICKER_TOTAL, _TINT_PICKER_ORIGINAL_BG,
+#   _tint_themes_name[], _tint_themes_bg[], _tint_themes_bg_r[], _tint_themes_bg_g[], _tint_themes_bg_b[], _tint_picker_text_sgr[]
 _tint_render_row() {
     local row_idx="$1" highlighted="$2"
     local name hex r g b num_width fg marker label row
-    num_width=${#_TINT_PK_TOTAL}
+    num_width=${#_TINT_PICKER_TOTAL}
 
     if [ "$row_idx" -eq 0 ]; then
-        if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then name="(unchanged)"; else name="(reset to default)"; fi
-        hex="$_TINT_PK_ORIGINAL_BG"
+        if [ -n "$_TINT_PICKER_ORIGINAL_BG" ]; then name="(unchanged)"; else name="(reset to default)"; fi
+        hex="$_TINT_PICKER_ORIGINAL_BG"
     else
         # shellcheck disable=SC3054
-        name="${_tint_names[$row_idx]}"
+        name="${_tint_themes_name[$row_idx]}"
         # shellcheck disable=SC3054
-        hex="${_tint_hexes[$row_idx]}"
+        hex="${_tint_themes_bg[$row_idx]}"
     fi
 
     # Build prefix: > for cursor, * for default, space otherwise.
@@ -513,22 +626,24 @@ _tint_render_row() {
     # they represent the same selection — choosing either preserves the current color.
     if [ "$highlighted" -eq 1 ]; then
         marker="> "
-    elif [ "$row_idx" -eq "$_TINT_PK_DEFAULT" ] || { [ "$row_idx" -eq 0 ] && [ "$_TINT_PK_DEFAULT" -gt 0 ]; }; then
+    elif [ "$row_idx" -eq "$_TINT_PICKER_DEFAULT" ] || { [ "$row_idx" -eq 0 ] && [ "$_TINT_PICKER_DEFAULT" -gt 0 ]; }; then
         marker="* "
     else
         marker="  "
     fi
 
+    # hex non-empty means we have color data (RGB arrays populated) —
+    # render with colored background. Empty for row 0 when original bg unknown.
     if [ -n "$hex" ]; then
         # shellcheck disable=SC3054
-        r="${_tint_r[$row_idx]}" g="${_tint_g[$row_idx]}" b="${_tint_b[$row_idx]}"
+        r="${_tint_themes_bg_r[$row_idx]}" g="${_tint_themes_bg_g[$row_idx]}" b="${_tint_themes_bg_b[$row_idx]}"
         # shellcheck disable=SC3054
-        fg="${_tint_fg[$row_idx]}"
+        fg="${_tint_picker_text_sgr[$row_idx]}"
         # shellcheck disable=SC3045
-        printf -v label '%*d.    #%s    %s' "$num_width" "$((row_idx + 1))" "${hex#\#}" "$name"
+        printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
         local padded
         # shellcheck disable=SC3045
-        printf -v padded "%-${_TINT_ROW_WIDTH}s" "$label"
+        printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
         if [ "$highlighted" -eq 1 ]; then
             # shellcheck disable=SC3045
             printf -v row '%s\e[%s;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg" "$r" "$g" "$b" "$padded"
@@ -538,10 +653,10 @@ _tint_render_row() {
         fi
     else
         # shellcheck disable=SC3045
-        printf -v label '%*d.    - - - -    %s' "$num_width" "$((row_idx + 1))" "$name"
+        printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
         local padded
         # shellcheck disable=SC3045
-        printf -v padded "%-${_TINT_ROW_WIDTH}s" "$label"
+        printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
         if [ "$highlighted" -eq 1 ]; then
             row="${marker}${padded}"
         else
@@ -549,83 +664,82 @@ _tint_render_row() {
         fi
     fi
     # shellcheck disable=SC3054,SC3024,SC3003
-    _tint_buf+=$'\r\e[K'"${row}"$'\n'
+    _tint_picker_buf+=$'\r\e[K'"${row}"$'\n'
 }
 
-# _tint_apply_preview_color - Set terminal background to the highlighted color
+# _tint_apply_preview_color - Apply the highlighted theme as a live preview
 #
 # Provides live preview as the user navigates the picker.
+# Always previews fg alongside bg (via auto-compute) even when the original
+# fg is unknown — skipping fg would leave text unreadable on light themes.
 #
-# Sets: _TINT_PK_PREVIEWED
+# Sets: _TINT_PICKER_PREVIEWED
 _tint_apply_preview_color() {
-    if [ "$_TINT_PK_IDX" -eq 0 ]; then
-        if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
-            tint_set "$_TINT_PK_ORIGINAL_BG"
-        elif [ "${_TINT_PK_PREVIEWED:-0}" -eq 1 ]; then
-            tint_reset
-        fi
+    if [ "$_TINT_PICKER_IDX" -eq 0 ]; then
+        _tint_restore_original_colors
+        return
     else
-        _TINT_PK_PREVIEWED=1
+        _TINT_PICKER_PREVIEWED=1
         # shellcheck disable=SC3054
-        tint_set "${_tint_hexes[$_TINT_PK_IDX]}"
+        tint_set "${_tint_themes[$_TINT_PICKER_IDX]}"
     fi
 }
 
-# _tint_render_scroll_indicator - Append scroll indicator to _tint_buf
+# _tint_render_scroll_indicator - Append scroll indicator to _tint_picker_buf
 #
 # Shows how many entries are hidden above/below (e.g., "↑ 3 more · ↓ 5 more").
 _tint_render_scroll_indicator() {
     # shellcheck disable=SC3024,SC3003
-    _tint_buf+=$'\r\e[K'
+    _tint_picker_buf+=$'\r\e[K'
     local indicator=""
-    if [ "$_TINT_PK_WIN_START" -gt 0 ] && [ "$_TINT_PK_WIN_END" -lt $(( _TINT_PK_TOTAL - 1 )) ]; then
+    if [ "$_TINT_PICKER_WIN_START" -gt 0 ] && [ "$_TINT_PICKER_WIN_END" -lt $(( _TINT_PICKER_TOTAL - 1 )) ]; then
         # shellcheck disable=SC3045
-        printf -v indicator '\e[2m  \xe2\x86\x91 %d more \xc2\xb7 \xe2\x86\x93 %d more\e[0m' "$_TINT_PK_WIN_START" "$(( _TINT_PK_TOTAL - 1 - _TINT_PK_WIN_END ))"
-    elif [ "$_TINT_PK_WIN_START" -gt 0 ]; then
+        printf -v indicator '\e[2m  \xe2\x86\x91 %d more \xc2\xb7 \xe2\x86\x93 %d more\e[0m' "$_TINT_PICKER_WIN_START" "$(( _TINT_PICKER_TOTAL - 1 - _TINT_PICKER_WIN_END ))"
+    elif [ "$_TINT_PICKER_WIN_START" -gt 0 ]; then
         # shellcheck disable=SC3045
-        printf -v indicator '\e[2m  \xe2\x86\x91 %d more\e[0m' "$_TINT_PK_WIN_START"
-    elif [ "$_TINT_PK_WIN_END" -lt $(( _TINT_PK_TOTAL - 1 )) ]; then
+        printf -v indicator '\e[2m  \xe2\x86\x91 %d more\e[0m' "$_TINT_PICKER_WIN_START"
+    elif [ "$_TINT_PICKER_WIN_END" -lt $(( _TINT_PICKER_TOTAL - 1 )) ]; then
         # shellcheck disable=SC3045
-        printf -v indicator '\e[2m  \xe2\x86\x93 %d more\e[0m' "$(( _TINT_PK_TOTAL - 1 - _TINT_PK_WIN_END ))"
+        printf -v indicator '\e[2m  \xe2\x86\x93 %d more\e[0m' "$(( _TINT_PICKER_TOTAL - 1 - _TINT_PICKER_WIN_END ))"
     fi
     # shellcheck disable=SC3024
-    _tint_buf+="$indicator"
+    _tint_picker_buf+="$indicator"
 }
 
 # _tint_render_all - Full redraw of the picker
 #
 # Repaints every visible row plus the scroll indicator. Output is
-# buffered into _tint_buf and flushed in a single write() to avoid
+# buffered into _tint_picker_buf and flushed in a single write() to avoid
 # flicker and reduce PTY backpressure (especially over SSH).
 #
 # Callers must update model state (_tint_update_scroll_window) first.
 #
-# Sets: _TINT_PK_RENDERED_ROWS
+# Sets: _TINT_PICKER_RENDERED_ROWS
 _tint_render_all() {
     local i highlighted
 
-    # Build entire frame into _tint_buf, then write in one shot.
-    local _tint_buf=""
+    # Build entire frame into _tint_picker_buf, then write in one shot.
+    local _tint_picker_buf=""
 
     # Move cursor up to first row position (for redraw).
-    if [ "${_TINT_PK_RENDERED_ROWS:-0}" -gt 0 ]; then
+    if [ "${_TINT_PICKER_RENDERED_ROWS:-0}" -gt 0 ]; then
         # shellcheck disable=SC3045
-        printf -v _tint_buf '\e[%dA' "$(( _TINT_PK_RENDERED_ROWS ))"
+        printf -v _tint_picker_buf '\e[%dA' "$(( _TINT_PICKER_RENDERED_ROWS ))"
     fi
 
-    # Draw each visible row (appends to _tint_buf via dynamic scoping)
+    # Draw each visible row (appends to _tint_picker_buf via dynamic scoping)
     local rows_printed=0
-    i=$_TINT_PK_WIN_START
-    while [ "$i" -le "$_TINT_PK_WIN_END" ]; do
-        if [ "$i" -eq "$_TINT_PK_IDX" ]; then highlighted=1; else highlighted=0; fi
+    i=$_TINT_PICKER_WIN_START
+    while [ "$i" -le "$_TINT_PICKER_WIN_END" ]; do
+        if [ "$i" -eq "$_TINT_PICKER_IDX" ]; then highlighted=1; else highlighted=0; fi
         _tint_render_row "$i" "$highlighted"
         rows_printed=$(( rows_printed + 1 ))
         i=$(( i + 1 ))
     done
 
     _tint_render_scroll_indicator
-    printf '%s' "$_tint_buf" >/dev/tty
-    _TINT_PK_RENDERED_ROWS=$rows_printed
+    printf '%s' "$_tint_picker_buf" >/dev/tty
+    _TINT_PICKER_RENDERED_ROWS=$rows_printed
 }
 
 # _tint_render_changed_rows <old_idx> - Incremental repaint of two changed rows
@@ -635,19 +749,19 @@ _tint_render_all() {
 # reducing output from ~2KB (full frame) to ~200B (two rows). This prevents
 # PTY buffer deadlocks when the master side isn't draining continuously.
 #
-# Reads: _TINT_PK_IDX, _TINT_PK_WIN_START, _TINT_PK_RENDERED_ROWS
+# Reads: _TINT_PICKER_IDX, _TINT_PICKER_WIN_START, _TINT_PICKER_RENDERED_ROWS
 _tint_render_changed_rows() {
     local old_idx="$1"
     # shellcheck disable=SC3024,SC3003
-    local _tint_buf="" _tmp=""
-    local old_pos=$(( old_idx - _TINT_PK_WIN_START ))
-    local new_pos=$(( _TINT_PK_IDX - _TINT_PK_WIN_START ))
+    local _tint_picker_buf="" _tmp=""
+    local old_pos=$(( old_idx - _TINT_PICKER_WIN_START ))
+    local new_pos=$(( _TINT_PICKER_IDX - _TINT_PICKER_WIN_START ))
 
     # Move from scroll indicator line up to old row
     # shellcheck disable=SC3045
-    printf -v _tint_buf '\e[%dA' "$(( _TINT_PK_RENDERED_ROWS - old_pos ))"
+    printf -v _tint_picker_buf '\e[%dA' "$(( _TINT_PICKER_RENDERED_ROWS - old_pos ))"
 
-    # Render old row (unhighlighted) — appends \r\e[K...row...\n to _tint_buf
+    # Render old row (unhighlighted) — appends \r\e[K...row...\n to _tint_picker_buf
     _tint_render_row "$old_idx" 0
 
     # Cursor is now at old_pos + 1; navigate to new_pos
@@ -656,27 +770,27 @@ _tint_render_changed_rows() {
         # shellcheck disable=SC3045
         printf -v _tmp '\e[%dB' "$diff"
         # shellcheck disable=SC3024
-        _tint_buf+="$_tmp"
+        _tint_picker_buf+="$_tmp"
     elif [ "$diff" -lt 0 ]; then
         # shellcheck disable=SC3045
         printf -v _tmp '\e[%dA' "$(( -diff ))"
         # shellcheck disable=SC3024
-        _tint_buf+="$_tmp"
+        _tint_picker_buf+="$_tmp"
     fi
 
     # Render new row (highlighted)
-    _tint_render_row "$_TINT_PK_IDX" 1
+    _tint_render_row "$_TINT_PICKER_IDX" 1
 
     # Move back to scroll indicator line (cursor is at new_pos + 1)
-    local down=$(( _TINT_PK_RENDERED_ROWS - new_pos - 1 ))
+    local down=$(( _TINT_PICKER_RENDERED_ROWS - new_pos - 1 ))
     if [ "$down" -gt 0 ]; then
         # shellcheck disable=SC3045
         printf -v _tmp '\e[%dB' "$down"
         # shellcheck disable=SC3024
-        _tint_buf+="$_tmp"
+        _tint_picker_buf+="$_tmp"
     fi
 
-    printf '%s' "$_tint_buf" >/dev/tty
+    printf '%s' "$_tint_picker_buf" >/dev/tty
 }
 
 # _tint_render_cursor_move - Render after a cursor move
@@ -684,14 +798,14 @@ _tint_render_changed_rows() {
 # Applies preview color, then uses incremental rendering when the scroll
 # window didn't change, falling back to full redraw when scrolling occurred.
 #
-# Reads: _TINT_PK_SCROLLED, _TINT_PK_OLD_IDX
+# Reads: _TINT_PICKER_SCROLLED, _TINT_PICKER_OLD_IDX
 _tint_render_cursor_move() {
     _tint_apply_preview_color
     # || true: render is non-fatal; prevents set -e abort on signal race
-    if [ "$_TINT_PK_SCROLLED" -eq 1 ]; then
+    if [ "$_TINT_PICKER_SCROLLED" -eq 1 ]; then
         _tint_render_all || true
     else
-        _tint_render_changed_rows "$_TINT_PK_OLD_IDX" || true
+        _tint_render_changed_rows "$_TINT_PICKER_OLD_IDX" || true
     fi
 }
 
@@ -703,7 +817,7 @@ _tint_render_cursor_move() {
 # logical key names. Uses _tint_esc_timeout (set in _tint_setup_terminal)
 # to distinguish bare Escape from arrow key sequences.
 #
-# Sets: _TINT_PK_KEY - normalized key name:
+# Sets: _TINT_PICKER_KEY - normalized key name:
 #   "up" | "down"     Arrow/vim keys
 #   "confirm"         Enter key
 #   "cancel"          Bare Esc (no following sequence)
@@ -711,7 +825,7 @@ _tint_render_cursor_move() {
 #   ""                Timeout (no key pressed)
 # Returns: 0 on success or timeout, 1 on EOF/error
 _tint_read_key() {
-    _TINT_PK_KEY=""
+    _TINT_PICKER_KEY=""
     local key key2 key3
     if ! IFS= read -rn1 -t "$_tint_read_timeout" key </dev/tty; then
         # Timeout with no data — loop back to check signals.
@@ -728,96 +842,109 @@ _tint_read_key() {
                     "["|"O")
                         IFS= read -rn1 -t "$_tint_esc_timeout" key3 </dev/tty 2>/dev/null || return 0
                         case "$key3" in
-                            A|D) _TINT_PK_KEY=up ;;   # Up/Left → up
-                            B|C) _TINT_PK_KEY=down ;;  # Down/Right → down
+                            A|D) _TINT_PICKER_KEY=up ;;   # Up/Left → up
+                            B|C) _TINT_PICKER_KEY=down ;;  # Down/Right → down
                         esac
                         ;;
                 esac
             else
-                _TINT_PK_KEY=cancel
+                _TINT_PICKER_KEY=cancel
             fi
             ;;
-        h|k) _TINT_PK_KEY=up ;;
-        l|j) _TINT_PK_KEY=down ;;
-        q)   _TINT_PK_KEY=q ;;
-        "")  _TINT_PK_KEY=confirm ;;
+        h|k) _TINT_PICKER_KEY=up ;;
+        l|j) _TINT_PICKER_KEY=down ;;
+        q)   _TINT_PICKER_KEY=q ;;
+        "")  _TINT_PICKER_KEY=confirm ;;
     esac
 }
 
 # --- Picker: Session ---
 
-# _tint_accept_selection - Confirm selection: teardown, apply color, print result
+# _tint_accept_selection - Confirm selection: teardown, apply theme, print result
 #
-# Model: sets _TINT_PK_EXIT_REASON=confirm so _tint_restore_terminal skips
-# background restore. View: tears down terminal, applies selected color,
-# and prints hex to stdout.
+# Model: sets _TINT_PICKER_EXIT_REASON=confirm so _tint_restore_terminal skips
+# background restore. View: tears down terminal, applies selected theme,
+# and prints theme name to stdout.
 #
-# Stdout: #rrggbb hex of selected color (empty if reset)
+# Stdout: theme name (empty if unchanged/reset)
 _tint_accept_selection() {
     # Model: mark as confirmed
-    _TINT_PK_EXIT_REASON=confirm
-    # View: teardown and apply final color
+    _TINT_PICKER_EXIT_REASON=confirm
+    # View: teardown and apply final theme
     _tint_restore_terminal
-    if [ "$_TINT_PK_IDX" -eq 0 ]; then
-        if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
-            tint_set "$_TINT_PK_ORIGINAL_BG"
-            printf '%s' "$_TINT_PK_ORIGINAL_BG"
-        else
-            tint_reset
-        fi
+    if [ "$_TINT_PICKER_IDX" -eq 0 ]; then
+        _tint_restore_original_colors
     else
         # shellcheck disable=SC3054
-        tint_set "${_tint_hexes[$_TINT_PK_IDX]}"
+        tint_set "${_tint_themes[$_TINT_PICKER_IDX]}"
         # shellcheck disable=SC3054
-        printf '%s' "${_tint_hexes[$_TINT_PK_IDX]}"
+        printf '%s' "${_tint_themes_name[$_TINT_PICKER_IDX]}"
     fi
 }
 
-# _tint_compute_foreground <idx> - Set _tint_fg[idx] based on RGB luminance
+# _tint_compute_text_sgr <idx> - Set _tint_picker_text_sgr[idx] based on RGB luminance
 #
 # Uses the perceived brightness formula (BT.601 luma) to pick
 # black (30) or white (97) foreground for readability.
 #
-# Sets: _tint_fg[idx]
-_tint_compute_foreground() {
+# Sets: _tint_picker_text_sgr[idx]
+_tint_compute_text_sgr() {
     # shellcheck disable=SC3054
-    if [ $(( (_tint_r[$1] * 299 + _tint_g[$1] * 587 + _tint_b[$1] * 114) / 1000 )) -gt 128 ]; then
-        _tint_fg[$1]="30"
+    if [ $(( (_tint_themes_bg_r[$1] * 299 + _tint_themes_bg_g[$1] * 587 + _tint_themes_bg_b[$1] * 114) / 1000 )) -gt 128 ]; then
+        _tint_picker_text_sgr[$1]="30"
     else
-        _tint_fg[$1]="97"
+        _tint_picker_text_sgr[$1]="97"
     fi
 }
 
 # _tint_load_palette_arrays - Parse palette into parallel arrays with pre-computed RGB/fg
 #
-# Single read pass over $TINT_PALETTE (~29 sed forks → 0).
+# Single read pass over $TINT_PALETTE.
 #
-# Sets: palette_count, _TINT_PK_TOTAL, last_idx (via dynamic scoping),
-#   _tint_names[], _tint_hexes[], _tint_r[], _tint_g[], _tint_b[], _tint_fg[]
+# Sets: _tint_palette_count, _TINT_PICKER_TOTAL, _tint_last_idx (via dynamic scoping),
+#   _tint_themes_name[], _tint_themes_bg[], _tint_themes[], _tint_themes_fg[],
+#   _tint_themes_bg_r[], _tint_themes_bg_g[], _tint_themes_bg_b[], _tint_picker_text_sgr[]
 _tint_load_palette_arrays() {
-    local hex name
+    local line name theme bg
     i=0
-    while IFS=: read -r name hex; do
-        # _tint_load_palette validates format, but guard here too for direct callers
-        case "$hex" in '#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;; *) continue ;; esac
+    while IFS= read -r line; do
+        [ -z "$line" ] && continue
+        name="${line%%:*}"
+        theme="${line#*:}"
+        bg="${theme%%:*}"
+        # _tint_load_palette validates format, but guard here too for direct callers.
+        # Both bg and fg must be valid before we increment i, otherwise partial
+        # entries pollute the arrays (bg stored but fg missing).
+        case "$bg" in '#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;; *) continue ;; esac
+        # shellcheck disable=SC3057
+        local _fg_raw="${theme#*:}"
+        _fg_raw="${_fg_raw%%:*}"
+        case "$_fg_raw" in '#'[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ;; *) continue ;; esac
         i=$((i + 1))
         # shellcheck disable=SC3054
-        _tint_names[i]="$name"
+        _tint_themes_name[i]="$name"
         # shellcheck disable=SC3054
-        _tint_hexes[i]="$hex"
+        _tint_themes[i]="$theme"
         # shellcheck disable=SC3054,SC3057,SC3052
-        _tint_r[i]=$((16#${hex:1:2}))
+        _tint_themes_bg_r[i]=$((16#${bg:1:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
-        _tint_g[i]=$((16#${hex:3:2}))
+        _tint_themes_bg_g[i]=$((16#${bg:3:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
-        _tint_b[i]=$((16#${hex:5:2}))
-        _tint_compute_foreground "$i"
+        _tint_themes_bg_b[i]=$((16#${bg:5:2}))
+        # printf -v: bash builtin (no fork). %02x always produces lowercase.
+        # shellcheck disable=SC3045,SC3054
+        printf -v "_tint_themes_bg[$i]" '#%02x%02x%02x' "${_tint_themes_bg_r[$i]}" "${_tint_themes_bg_g[$i]}" "${_tint_themes_bg_b[$i]}"
+        # Lowercase fg hex (no fork). _fg_raw already validated above.
+        # printf %02x produces lowercase hex, matching the bg path above.
+        # shellcheck disable=SC3045,SC3054,SC3057,SC3052
+        printf -v "_tint_themes_fg[$i]" '#%02x%02x%02x' "$((16#${_fg_raw:1:2}))" "$((16#${_fg_raw:3:2}))" "$((16#${_fg_raw:5:2}))"
+        _tint_compute_text_sgr "$i"
     done <<EOF
 $TINT_PALETTE
 EOF
-    palette_count=$i
-    _TINT_PK_TOTAL=$(( palette_count + 1 ))
-    last_idx=$(( _TINT_PK_TOTAL - 1 ))
+    _tint_palette_count=$i
+    _TINT_PICKER_TOTAL=$(( _tint_palette_count + 1 ))
+    _tint_last_idx=$(( _TINT_PICKER_TOTAL - 1 ))
 }
 
 # _tint_report_osc11_error - Print diagnostic when OSC 11 detection fails
@@ -842,40 +969,84 @@ ERRMSG
 
 # _tint_compute_unchanged_entry - Pre-compute RGB and foreground for the original background
 #
-# Sets: _tint_r[0], _tint_g[0], _tint_b[0], _tint_fg[0]
+# Sets: _tint_themes_bg_r[0], _tint_themes_bg_g[0], _tint_themes_bg_b[0], _tint_picker_text_sgr[0]
 _tint_compute_unchanged_entry() {
-    if [ -n "$_TINT_PK_ORIGINAL_BG" ]; then
+    if [ -n "$_TINT_PICKER_ORIGINAL_BG" ]; then
         # shellcheck disable=SC3054,SC3057,SC3052
-        _tint_r[0]=$((16#${_TINT_PK_ORIGINAL_BG:1:2}))
+        _tint_themes_bg_r[0]=$((16#${_TINT_PICKER_ORIGINAL_BG:1:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
-        _tint_g[0]=$((16#${_TINT_PK_ORIGINAL_BG:3:2}))
+        _tint_themes_bg_g[0]=$((16#${_TINT_PICKER_ORIGINAL_BG:3:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
-        _tint_b[0]=$((16#${_TINT_PK_ORIGINAL_BG:5:2}))
-        _tint_compute_foreground 0
+        _tint_themes_bg_b[0]=$((16#${_TINT_PICKER_ORIGINAL_BG:5:2}))
+        _tint_compute_text_sgr 0
     fi
 }
 
-# _tint_find_default_index <current> - Match current color to a palette index
+# _tint_find_default_index <current> - Match current value to a palette index
 #
-# Sets: _TINT_PK_IDX, _TINT_PK_DEFAULT (if a match is found)
-# Reads: palette_count, _tint_hexes[] (via dynamic scoping)
+# Accepts a theme name or #RRGGBB hex. Names match against _tint_themes_name[];
+# hex values match against _tint_themes_bg[] (bg color).
+#
+# Sets: _TINT_PICKER_IDX, _TINT_PICKER_DEFAULT (if a match is found)
+# Reads: _tint_palette_count, _tint_themes_name[], _tint_themes_bg[] (via dynamic scoping)
 _tint_find_default_index() {
     local current="$1"
-    if [ -n "$current" ]; then
-        local current_hex
-        current_hex=$(tint_resolve "$current" 2>/dev/null | tr '[:upper:]' '[:lower:]') || current_hex=""
-        if [ -n "$current_hex" ]; then
-            i=1
-            while [ "$i" -le "$palette_count" ]; do
-                # shellcheck disable=SC3054
-                if [ "$(printf '%s' "${_tint_hexes[$i]}" | tr '[:upper:]' '[:lower:]')" = "$current_hex" ]; then
-                    _TINT_PK_IDX=$i
-                    _TINT_PK_DEFAULT=$_TINT_PK_IDX
-                    break
-                fi
-                i=$((i + 1))
-            done
+    [ -z "$current" ] && return 0
+    local i=1
+    # Try name match first (the common case for theme-based workflows)
+    while [ "$i" -le "$_tint_palette_count" ]; do
+        # shellcheck disable=SC3054
+        if [ "${_tint_themes_name[$i]}" = "$current" ]; then
+            _TINT_PICKER_IDX=$i
+            _TINT_PICKER_DEFAULT=$_TINT_PICKER_IDX
+            return 0
         fi
+        i=$((i + 1))
+    done
+    # Fall back to hex match (for bare #RRGGBB input or full theme strings).
+    # Theme disambiguation for restore is handled separately in _tint_init_picker
+    # using bg+fg matching against the terminal's queried colors.
+    local current_hex current_fg="" resolve_input="$current"
+    # Full theme strings (#bg:#fg:#00:...) aren't valid tint_resolve input.
+    # Extract bg for resolving, and fg for disambiguation when themes share a bg.
+    case "$resolve_input" in
+        *:*)
+            current_fg="${resolve_input#*:}"
+            current_fg=$(printf '%s' "${current_fg%%:*}" | tr '[:upper:]' '[:lower:]')
+            resolve_input="${resolve_input%%:*}"
+            ;;
+    esac
+    current_hex=$(tint_resolve "$resolve_input" 2>/dev/null) || return 0
+    # tint_resolve returns full theme string for names; extract bg hex
+    current_hex=$(printf '%s' "${current_hex%%:*}" | tr '[:upper:]' '[:lower:]')
+    [ -z "$current_hex" ] && return 0
+    # When fg is available (full theme string input), prefer bg+fg match.
+    # Falls back to first bg-only match if fg doesn't narrow to one.
+    local _first_bg_match=0
+    i=1
+    while [ "$i" -le "$_tint_palette_count" ]; do
+        # shellcheck disable=SC3054
+        if [ "${_tint_themes_bg[$i]}" = "$current_hex" ]; then
+            if [ -n "$current_fg" ]; then
+                # shellcheck disable=SC3054
+                if [ "${_tint_themes_fg[$i]}" = "$current_fg" ]; then
+                    _TINT_PICKER_IDX=$i
+                    _TINT_PICKER_DEFAULT=$_TINT_PICKER_IDX
+                    return 0
+                fi
+                if [ "$_first_bg_match" -eq 0 ]; then _first_bg_match=$i; fi
+            else
+                _TINT_PICKER_IDX=$i
+                _TINT_PICKER_DEFAULT=$_TINT_PICKER_IDX
+                return 0
+            fi
+        fi
+        i=$((i + 1))
+    done
+    # No bg+fg match found — fall back to first bg-only match
+    if [ "$_first_bg_match" -gt 0 ]; then
+        _TINT_PICKER_IDX=$_first_bg_match
+        _TINT_PICKER_DEFAULT=$_TINT_PICKER_IDX
     fi
 }
 
@@ -886,9 +1057,9 @@ _tint_find_default_index() {
 # Uses BASH_SUBSHELL (Bash 3.0+) instead of BASHPID (Bash 4.0+)
 # for macOS Bash 3.2 compatibility.
 #
-# Sets: _tint_saved_traps, _tint_saved_exit, _TINT_PK_INTERRUPTED,
-#   _TINT_PK_CURSOR_HIDDEN, _TINT_PK_EXIT_REASON, _TINT_PK_KEY,
-#   _TINT_PK_SAVED_STTY, _TINT_PK_TRAPS_INSTALLED
+# Sets: _tint_saved_traps, _tint_saved_exit, _TINT_PICKER_INTERRUPTED,
+#   _TINT_PICKER_CURSOR_HIDDEN, _TINT_PICKER_EXIT_REASON, _TINT_PICKER_KEY,
+#   _TINT_PICKER_SAVED_STTY, _TINT_PICKER_TRAPS_INSTALLED
 _tint_install_signal_traps() {
     _tint_saved_traps=$(trap -p INT TERM 2>/dev/null || true)
     # shellcheck disable=SC3028
@@ -899,33 +1070,33 @@ _tint_install_signal_traps() {
     fi
 
     # Flag-based signal handling avoids killing the parent shell when
-    # sourced as a library. The read loop checks _TINT_PK_INTERRUPTED.
-    _TINT_PK_INTERRUPTED=0
-    _TINT_PK_CURSOR_HIDDEN=0
-    _TINT_PK_EXIT_REASON=""
-    _TINT_PK_KEY=""
+    # sourced as a library. The read loop checks _TINT_PICKER_INTERRUPTED.
+    _TINT_PICKER_INTERRUPTED=0
+    _TINT_PICKER_CURSOR_HIDDEN=0
+    _TINT_PICKER_EXIT_REASON=""
+    _TINT_PICKER_KEY=""
     # Clear stale stty snapshot so a signal between trap install and the
     # new stty -g can't restore wrong state.
-    _TINT_PK_SAVED_STTY=""
+    _TINT_PICKER_SAVED_STTY=""
     # Install traps before stty -echo so a signal in the gap can't leave
     # the terminal with echo disabled.
-    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_restore_terminal' EXIT
+    trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal' EXIT
     # 130 = 128+SIGINT, 143 = 128+SIGTERM (standard shell exit codes)
-    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PK_INTERRUPTED=130' INT
-    trap '_TINT_PK_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PK_INTERRUPTED=143' TERM
-    _TINT_PK_TRAPS_INSTALLED=1
+    trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PICKER_INTERRUPTED=130' INT
+    trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PICKER_INTERRUPTED=143' TERM
+    _TINT_PICKER_TRAPS_INSTALLED=1
 }
 
 # _tint_setup_terminal - Configure terminal for picker: stty, cursor, timeouts
 #
-# Sets: _TINT_PK_SAVED_STTY, _tint_esc_timeout, _tint_read_timeout
+# Sets: _TINT_PICKER_SAVED_STTY, _tint_esc_timeout, _tint_read_timeout
 # Returns: non-zero if interrupted during setup
 _tint_setup_terminal() {
-    if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
+    if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
     # Non-canonical mode: -echo suppresses keystroke echo, -icanon disables
     # line buffering. Without -icanon, bash's read -n1 toggles canonical mode
     # per call, creating a window for escape sequence byte delays.
-    _TINT_PK_SAVED_STTY=$(stty -g </dev/tty 2>/dev/null)
+    _TINT_PICKER_SAVED_STTY=$(stty -g </dev/tty 2>/dev/null)
     stty -echo -icanon </dev/tty 2>/dev/null
     _tint_hide_cursor
 
@@ -949,7 +1120,7 @@ _tint_setup_terminal() {
         _tint_esc_timeout=1
         _tint_read_timeout=1
     fi
-    if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
+    if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
     printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
     # Model: compute scroll window for initial cursor position
     _tint_update_scroll_window
@@ -963,36 +1134,85 @@ _tint_setup_terminal() {
 # Loads palette, queries terminal, installs traps, renders initial frame.
 #
 # Sets (via dynamic scoping from tint_pick):
-#   _tint_names[], _tint_hexes[], _tint_r[], _tint_g[], _tint_b[], _tint_fg[],
+#   _tint_themes_name[], _tint_themes_bg[], _tint_themes_fg[],
+#   _tint_themes_bg_r[], _tint_themes_bg_g[], _tint_themes_bg_b[], _tint_picker_text_sgr[],
 #   _tint_saved_traps, _tint_saved_exit, _tint_esc_timeout, _tint_read_timeout,
-#   palette_count, last_idx
+#   _tint_palette_count, _tint_last_idx
 # Returns: non-zero on failure (no bash, no tty, no OSC 11 support)
 _tint_init_picker() {
-    _TINT_PK_IDX=0
-    _TINT_PK_DEFAULT=0
+    _TINT_PICKER_IDX=0
+    _TINT_PICKER_DEFAULT=0
 
     _tint_load_palette_arrays
 
     # Calculate visible window size based on terminal height
     local term_lines
     term_lines=$(_tint_get_terminal_height)
-    _TINT_PK_VISIBLE=$(( term_lines - 2 ))  # reserve hint + scroll indicator
-    if [ "$_TINT_PK_VISIBLE" -gt "$_TINT_PK_TOTAL" ]; then _TINT_PK_VISIBLE=$_TINT_PK_TOTAL; fi
-    if [ "$_TINT_PK_VISIBLE" -lt 1 ]; then _TINT_PK_VISIBLE=1; fi
-    _TINT_PK_RENDERED_ROWS=0
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=0
-    _TINT_PK_OLD_IDX=0
-    _TINT_PK_SCROLLED=0
+    _TINT_PICKER_VISIBLE=$(( term_lines - 2 ))  # reserve hint + scroll indicator
+    if [ "$_TINT_PICKER_VISIBLE" -gt "$_TINT_PICKER_TOTAL" ]; then _TINT_PICKER_VISIBLE=$_TINT_PICKER_TOTAL; fi
+    if [ "$_TINT_PICKER_VISIBLE" -lt 1 ]; then _TINT_PICKER_VISIBLE=1; fi
+    _TINT_PICKER_RENDERED_ROWS=0
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=0
+    _TINT_PICKER_OLD_IDX=0
+    _TINT_PICKER_SCROLLED=0
 
-    if ! _TINT_PK_ORIGINAL_BG=$(tint_get); then
+    if ! _TINT_PICKER_ORIGINAL_BG=$(_tint_query_terminal_bg); then
         _tint_report_osc11_error
         return 1
     fi
-    _TINT_PK_PREVIEWED=0
+    _TINT_PICKER_ORIGINAL_FG=$(_tint_query_terminal_fg) || _TINT_PICKER_ORIGINAL_FG=""
+    _TINT_PICKER_PREVIEWED=0
 
     _tint_compute_unchanged_entry
+    # _TINT_PICKER_DEFAULT: visual star marker + initial cursor (from explicit arg)
     _tint_find_default_index "${1:-}"
+    # _TINT_PICKER_ORIGINAL_THEME_IDX: theme matching the terminal's current colors.
+    # Auto-detected from actual terminal state, independent of the caller's hint.
+    # Strategy: collect all themes whose bg matches, then narrow by fg when
+    # available. If still ambiguous (0 or 2+ candidates), fall back to 0 so the
+    # restore path uses direct bg/fg restore instead of a potentially wrong theme.
+    # Known limitation: bg+fg match is a heuristic — a user could share bg+fg
+    # with a theme but have different ANSI colors. However, matching is still
+    # the best option: the alternative (ANSI reset to terminal defaults) is
+    # worse for the overwhelmingly common case where bg+fg match implies the
+    # theme. Individual ANSI colors can't be queried portably (no OSC 4 query).
+    _TINT_PICKER_ORIGINAL_THEME_IDX=0
+    if [ -n "$_TINT_PICKER_ORIGINAL_BG" ]; then
+        local _candidates="" _candidate_count=0
+        local _i=1
+        while [ "$_i" -le "$_tint_last_idx" ]; do
+            # shellcheck disable=SC3054
+            if [ "${_tint_themes_bg[$_i]}" = "$_TINT_PICKER_ORIGINAL_BG" ]; then
+                _candidates="${_candidates:+$_candidates }$_i"
+                _candidate_count=$((_candidate_count + 1))
+            fi
+            _i=$((_i + 1))
+        done
+        if [ "$_candidate_count" -gt 0 ] && [ -n "$_TINT_PICKER_ORIGINAL_FG" ]; then
+            # fg available — require both bg AND fg to match, so we don't
+            # restore the wrong ANSI palette for a user whose bg happens to
+            # coincide with a theme but whose fg/ANSI colors differ.
+            local _fg_candidates="" _fg_count=0
+            for _i in $_candidates; do
+                # shellcheck disable=SC3054
+                if [ "${_tint_themes_fg[$_i]}" = "$_TINT_PICKER_ORIGINAL_FG" ]; then
+                    _fg_candidates="${_fg_candidates:+$_fg_candidates }$_i"
+                    _fg_count=$((_fg_count + 1))
+                fi
+            done
+            if [ "$_fg_count" -eq 1 ]; then
+                _TINT_PICKER_ORIGINAL_THEME_IDX=$_fg_candidates
+            fi
+        elif [ "$_candidate_count" -eq 1 ]; then
+            # No fg available — trust the sole bg match
+            _TINT_PICKER_ORIGINAL_THEME_IDX=$_candidates
+        fi
+    fi
+    # If no explicit current matched, use auto-detect for the star marker too
+    if [ "$_TINT_PICKER_DEFAULT" -eq 0 ] && [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -gt 0 ]; then
+        _TINT_PICKER_DEFAULT=$_TINT_PICKER_ORIGINAL_THEME_IDX
+    fi
     _tint_install_signal_traps
     _tint_setup_terminal
 }
@@ -1001,33 +1221,33 @@ _tint_init_picker() {
 #
 # Reads keystrokes via _tint_read_key and dispatches to action functions.
 #
-# Stdout: #rrggbb hex of selected color (on confirm only)
-# Returns: 0 if color selected, 1 if cancelled or error
+# Stdout: theme name (on confirm only, empty if unchanged)
+# Returns: 0 if theme selected, 1 if cancelled or error
 _tint_run_picker_loop() {
     while true; do
-        if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
-        # Timeout ensures signal flag (_TINT_PK_INTERRUPTED) gets checked even
+        if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
+        # Timeout ensures signal flag (_TINT_PICKER_INTERRUPTED) gets checked even
         # when bash restarts read after a caught signal (SA_RESTART behavior).
-        _tint_read_key || { _TINT_PK_EXIT_REASON=cancel; _tint_restore_terminal; return 1; }
-        if [ "$_TINT_PK_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PK_INTERRUPTED"; fi
-        case "$_TINT_PK_KEY" in
+        _tint_read_key || { _TINT_PICKER_EXIT_REASON=cancel; _tint_restore_terminal; return 1; }
+        if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
+        case "$_TINT_PICKER_KEY" in
             up|down)
                 # Model
-                _tint_model_move_cursor "$_TINT_PK_KEY"
+                _tint_model_move_cursor "$_TINT_PICKER_KEY"
                 _tint_update_scroll_window
                 # View
                 _tint_render_cursor_move
                 ;;
-            q|cancel) _TINT_PK_EXIT_REASON=cancel; _tint_restore_terminal; return 1 ;;
+            q|cancel) _TINT_PICKER_EXIT_REASON=cancel; _tint_restore_terminal; return 1 ;;
             confirm)  _tint_accept_selection; return 0 ;;
         esac
     done
 }
 
-# tint_pick [<current>] - Interactive color picker with live preview
+# tint_pick [<current>] - Interactive theme picker with live preview
 #
-# Stdout: #rrggbb hex of selected color (on confirm only)
-# Returns: 0 if color selected, 1 if cancelled or error
+# Stdout: theme name (on confirm only, empty if unchanged)
+# Returns: 0 if theme selected, 1 if cancelled or error
 tint_pick() {
     # Bash required for read -n/-t used in interactive picker.
     # Test actual bash array syntax in a subshell — simple presence checks
@@ -1050,9 +1270,10 @@ tint_pick() {
 
     # Session-scoped locals. Visible to _tint_init_picker, _tint_run_picker_loop,
     # _tint_restore_terminal, and render functions via bash dynamic scoping.
-    local i palette_count last_idx
+    local i _tint_palette_count _tint_last_idx
     # shellcheck disable=SC3054
-    local -a _tint_names _tint_hexes _tint_r _tint_g _tint_b _tint_fg
+    local -a _tint_themes_name _tint_themes_bg _tint_themes _tint_themes_fg \
+             _tint_themes_bg_r _tint_themes_bg_g _tint_themes_bg_b _tint_picker_text_sgr
     local _tint_saved_traps _tint_saved_exit
     local _tint_esc_timeout _tint_read_timeout
 
@@ -1100,13 +1321,13 @@ _tint_completions() {
         return
     fi
 
-    # First argument: flags, subcommands, or color names
-    opts="-g --get -h --help -l --list -v --version"
+    # First argument: flags, subcommands, or theme names
+    opts="-h --help -l --list -v --version"
     if [[ "$cur" == -* ]]; then
         COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
     else
         local names
-        names=$(command tint --list 2>/dev/null | awk '{print $2}')
+        names=$(command tint --list 2>/dev/null)
         COMPREPLY=( $(compgen -W "$names completions hook random reset" -- "$cur") )
     fi
 }
@@ -1123,30 +1344,29 @@ _tint_completions_zsh() {
 #compdef tint
 
 _tint() {
-    local -a subcommands flags colors
+    local -a subcommands flags themes
 
     if (( CURRENT == 2 )); then
         subcommands=(
-            'random:Pick a random color'
+            'random:Pick a random theme'
             'reset:Reset to terminal default'
             'completions:Output shell completions'
             'hook:Output shell integration code'
         )
-        colors=( ${(f)"$(command tint --list 2>/dev/null | awk '{print $2}')"} )
+        themes=( ${(f)"$(command tint --list 2>/dev/null)"} )
 
-        # Flags only when user types -; otherwise subcommands + colors
+        # Flags only when user types -; otherwise subcommands + themes
         if [[ "${words[CURRENT]}" == -* ]]; then
             flags=(
                 {-h,--help}':Show help'
-                {-l,--list}':List available colors'
-                {-g,--get}':Get current background color'
+                {-l,--list}':List available themes'
                 {-v,--version}':Show version'
             )
             _describe -t flags 'flag' flags
         else
             zstyle ':completion:*:*:tint:*' group-name ''
             _describe -t subcommands 'subcommand' subcommands
-            _describe -t colors 'color' colors
+            _describe -t themes 'theme' themes
         fi
     elif (( CURRENT == 3 )); then
         case "${words[2]}" in
@@ -1183,22 +1403,21 @@ end
 
 # Options (first argument only)
 complete -c tint -n __tint_needs_command -s h -l help -d 'Show help'
-complete -c tint -n __tint_needs_command -s l -l list -d 'List available colors'
-complete -c tint -n __tint_needs_command -s g -l get -d 'Get current background color'
+complete -c tint -n __tint_needs_command -s l -l list -d 'List available themes'
 complete -c tint -n __tint_needs_command -s v -l version -d 'Show version'
 
 # Subcommands (first argument only)
 complete -c tint -n __tint_needs_command -a 'completions' -d 'Output shell completions'
 complete -c tint -n __tint_needs_command -a 'hook' -d 'Output shell integration code'
-complete -c tint -n __tint_needs_command -a 'random' -d 'Pick a random color'
+complete -c tint -n __tint_needs_command -a 'random' -d 'Pick a random theme'
 complete -c tint -n __tint_needs_command -a 'reset' -d 'Reset to terminal default'
 
 # Subcommand arguments (second argument only)
 complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from completions' -xa 'bash zsh fish'
 complete -c tint -n 'test (count (commandline -opc)) -eq 2; and __fish_seen_subcommand_from hook' -xa 'bash zsh'
 
-# Color names (first argument only)
-complete -c tint -n __tint_needs_command -a "(command tint --list 2>/dev/null | awk '{print \$2}')" -d 'Color name'
+# Theme names (first argument only)
+complete -c tint -n __tint_needs_command -a "(command tint --list 2>/dev/null)" -d 'Theme name'
 FISH_COMP
 }
 
@@ -1209,36 +1428,36 @@ FISH_COMP
 # _tint_usage - Print usage information to stdout
 _tint_usage() {
     cat <<'EOF'
-tint - terminal background color picker
+tint - terminal theme switcher
 
-Set your terminal's background color. Run tint to pick interactively,
-or tint <color> to set one directly. Add .tint files to directories
-for automatic color switching.
+Switch your terminal's color theme. Run tint to pick interactively,
+or tint <name> to set one directly. Each theme sets background,
+foreground, and all 16 ANSI colors. Add .tint files to directories
+for automatic theme switching.
 
 USAGE
     tint                      Interactive picker with live preview
-    tint <name|hex>           Set background directly
-    tint random               Pick a random color
+    tint <name|hex>           Set theme directly
+    tint random               Pick a random theme
     tint reset                Reset to terminal default
     tint completions <shell>  Output shell completions (bash/zsh/fish)
     tint hook <shell>         Output shell integration code
     tint -h, --help           Show this help
-    tint -l, --list           List available colors
-    tint -g, --get            Get current background color
+    tint -l, --list           List available themes
     tint -v, --version        Show version
 
 INTERACTIVE CONTROLS
-    ←/→  h/l              Navigate colors
-    ↑/↓  k/j              Navigate colors
-    Enter                 Select color
+    ←/→  h/l              Navigate themes
+    ↑/↓  k/j              Navigate themes
+    Enter                 Select theme
     Esc  q                Cancel (restore original)
 
 EXAMPLES
-    tint solarized        Set by name
+    tint dracula          Set by name
     tint "#002b36"        Set by hex code
     tint random           Surprise me
     tint reset            Reset to terminal default
-    tint --list           Show all available colors
+    tint --list           Show all available themes
 
 SHELL INTEGRATION
     Add to your shell's rc file:
@@ -1251,19 +1470,20 @@ SHELL INTEGRATION
 
     Create .tint files in project directories:
 
-        echo "solarized" > ~/projects/myproject/.tint
+        echo "dracula" > ~/projects/myproject/.tint
         echo "reset" > ~/projects/personal/.tint    # reset to default
 
     The hook walks up from $PWD to / looking for the nearest .tint file.
-    Colors are sticky — if no .tint is found, the current color is kept.
+    Themes are sticky — if no .tint is found, the current theme is kept.
     Place a .tint in ~ for a global default.
 
 CONFIGURATION
     Custom palette file:  export TINT_PALETTE_FILE=~/.config/tint/palette.conf
-    Inline palette:       export TINT_PALETTE=$'name1:#hex1\nname2:#hex2'
+    Inline palette:       export TINT_PALETTE=$'name:#bg:#fg:#00:...:#15'
 
-    Palette format (one per line):
-        colorname:#hexcode
+    Theme format (one per line):
+        name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
+    Each value is a #RRGGBB hex color (bg, fg, then 16 ANSI colors 0-15).
 
 MORE INFO
     https://github.com/corygabrielsen/tint
@@ -1272,7 +1492,7 @@ EOF
 
 # _tint_hook_bash - Output bash shell integration code
 #
-# Outputs a self-contained hook that auto-applies .tint colors on directory change.
+# Outputs a self-contained hook that auto-applies .tint themes on directory change.
 # Designed for: eval "$(tint hook bash)"
 _tint_hook_bash() {
     cat <<'HOOK'
@@ -1338,7 +1558,7 @@ HOOK
 
 # _tint_hook_zsh - Output zsh shell integration code
 #
-# Outputs a self-contained hook that auto-applies .tint colors on directory change.
+# Outputs a self-contained hook that auto-applies .tint themes on directory change.
 # Uses chpwd_functions (native zsh dir-change hook, no PWD cache needed).
 # Designed for: eval "$(tint hook zsh)"
 _tint_hook_zsh() {
@@ -1395,7 +1615,7 @@ HOOK
 _tint_main() {
     # Explicit empty argument is invalid, not interactive mode
     if [ $# -gt 0 ] && [ -z "$1" ]; then
-        echo "error: color name cannot be empty" >&2
+        echo "error: theme name cannot be empty" >&2
         exit 1
     fi
     # Reject extra arguments — most commands take zero, completions/hook take one
@@ -1423,18 +1643,21 @@ _tint_main() {
                     exec bash "$0" "$@"
                 fi
                 echo "error: interactive mode requires bash" >&2
-                echo "usage: tint <color|hex>  or  tint --list" >&2
+                echo "usage: tint <theme|hex>  or  tint --list" >&2
                 exit 1
             fi
             if ! tint_supports_color; then
                 echo "error: interactive mode requires a terminal" >&2
-                echo "usage: tint <color|hex>  or  tint --list" >&2
+                echo "usage: tint <theme|hex>  or  tint --list" >&2
                 exit 1
             fi
-            # local is safe: _tint_ensure_bash re-execs into bash before _tint_main
-            local _tint_hex
-            if _tint_hex=$(tint_pick); then
-                if [ -n "$_tint_hex" ]; then printf '%s\n' "$_tint_hex"; fi
+            # local is safe: the shebang re-exec ensures bash before _tint_main
+            # Cancel (return 1) and unchanged (return 0, empty output) both produce
+            # no stdout — this is intentional. The CLI always exits 0 for interactive
+            # mode; the library-level tint_pick distinguishes them via return code.
+            local _tint_result
+            if _tint_result=$(tint_pick); then
+                if [ -n "$_tint_result" ]; then printf '%s\n' "$_tint_result"; fi
             fi
             ;;
         -h|--help)
@@ -1442,10 +1665,6 @@ _tint_main() {
             ;;
         -l|--list)
             tint_list
-            ;;
-        -g|--get)
-            tint_get || { echo "error: failed to get current background color" >&2; exit 1; }
-            echo
             ;;
         -v|--version)
             echo "tint $TINT_VERSION"
@@ -1484,10 +1703,10 @@ _tint_main() {
             esac
             ;;
         random)
-            local count entry hex name idx
+            local count entry name theme idx
             count=$(_tint_palette_count)
             if [ "$count" -eq 0 ]; then
-                echo "No colors in palette" >&2
+                echo "No themes in palette" >&2
                 exit 1
             fi
             # Build seed in awk to avoid shell arithmetic octal pitfalls.
@@ -1499,24 +1718,28 @@ _tint_main() {
                 'BEGIN{ srand(pid * sec + rnd + (nsec+0)); print int(rand()*max)+1 }')
             entry=$(_tint_palette_get "$idx")
             name="${entry%%:*}"
-            hex="${entry#*:}"
-            tint_set "$hex"
-            echo "$name $hex"
+            theme="${entry#*:}"
+            tint_set "$theme"
+            echo "$name"
             ;;
         reset)
             tint_reset
             echo "Reset to terminal default"
             ;;
         *)
-            # local is de facto standard (see line 76)
             # shellcheck disable=SC3043
-            local hex
-            if hex=$(tint_resolve "$1") && [ -n "$hex" ]; then
-                tint_set "$hex"
-                echo "$hex"
+            local resolved
+            if resolved=$(tint_resolve "$1") && [ -n "$resolved" ]; then
+                tint_set "$resolved"
+                # For hex input, echo the normalized value (e.g., #abc → #aabbcc).
+                # For named themes, echo the name the user typed.
+                case "$1" in
+                    '#'*) echo "${resolved%%:*}" ;;
+                    *)    echo "$1" ;;
+                esac
             else
-                echo "Unknown color: $1" >&2
-                echo "Run 'tint --list' for available colors" >&2
+                echo "Unknown theme: $1" >&2
+                echo "Run 'tint --list' for available themes" >&2
                 exit 1
             fi
             ;;

@@ -13,7 +13,7 @@ _C_RST := \033[0m
 .PHONY: doctor doctor-pre-commit doctor-shellcheck doctor-bats
 
 help:
-	@echo "tint - terminal background color picker"
+	@echo "tint - terminal theme switcher"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make lint       Run shellcheck on all scripts"

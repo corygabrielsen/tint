@@ -4,15 +4,14 @@
 [![Latest Release](https://img.shields.io/github/v/release/corygabrielsen/tint)](https://github.com/corygabrielsen/tint/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Terminal background color picker with live preview. Drop `.tint` files into project directories and your background changes automatically as you navigate.
+Terminal theme switcher with live preview. Each theme sets background, foreground, and all 16 ANSI colors. Drop `.tint` files into project directories and your theme changes automatically as you navigate.
 
 ```
   ↑/↓ Navigate   Enter: Select   Esc: Cancel
-*  1.    - - - -    (unchanged)
->  2.    #000000    black
-   3.    #1e1e1e    vscode
-   4.    #282a36    dracula
-   ↓ 25 more
+*  1.  (unchanged)
+>  2.  dracula
+   3.  gruvbox
+   ↓ 16 more
 ```
 
 ## Install
@@ -34,15 +33,14 @@ tint --version
 
 ```bash
 tint                  # Interactive picker with live preview
-tint solarized        # Set by name
-tint "#002b36"        # Set by hex
-tint random           # Pick a random color
+tint dracula          # Set by name (bg + fg + 16 ANSI colors)
+tint "#002b36"        # Set by hex (bg + auto-computed fg)
+tint random           # Pick a random theme
 tint reset            # Reset to terminal default
 tint hook bash        # Output shell hook for auto-tinting on cd
 tint completions bash # Output shell completions
 tint -h, --help       # Show help
-tint -l, --list       # List available colors
-tint -g, --get        # Get current background color
+tint -l, --list       # List available themes
 tint -v, --version    # Show version
 ```
 
@@ -52,28 +50,29 @@ tint -v, --version    # Show version
 | --------------- | ------------------------- |
 | `↑` `↓` `k` `j` | Navigate list             |
 | `←` `→` `h` `l` | Navigate list (alternate) |
-| `Enter`         | Select color              |
+| `Enter`         | Select theme              |
 | `Esc` `q`       | Cancel (restore original) |
 
-## Available Colors
-
-Built-in themes:
+## Built-in Themes
 
 ```
-vscode, dracula, nord, gruvbox, onedark, monokai, catppuccin, tokyo,
-solarized, github, rose-pine, night-owl, ayu, black, cobalt, darcula,
-everforest, forest, horizon, kanagawa, material, midnight, navy,
-obsidian, oxblood, palenight, slate, synthwave, ubuntu
+ayu, catppuccin, cobalt, dracula, everforest, github, gruvbox, horizon,
+kanagawa, material, monokai, night-owl, nord, onedark, palenight,
+rose-pine, solarized, synthwave, tokyo
 ```
 
 ## Custom Palette
 
-Create `~/.config/tint/palette.conf`:
+Each theme is a name followed by 18 hex colors: background, foreground, and ANSI colors 0-15.
 
 ```
-# My custom colors
-mycolor:#123456
-another:#abcdef
+name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
+```
+
+Create a palette file at `~/.config/tint/palette.conf`:
+
+```
+mytheme:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5
 ```
 
 Then:
@@ -86,7 +85,7 @@ tint
 Or inline:
 
 ```bash
-export TINT_PALETTE=$'custom1:#111111\ncustom2:#222222'
+export TINT_PALETTE='mytheme:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5'
 tint
 ```
 
@@ -97,19 +96,19 @@ Source `tint` to use its functions in scripts:
 ```bash
 source /path/to/tint
 
-tint_supports_color       # Check if terminal supports OSC colors
-tint_get                  # Get current background → #rrggbb
-tint_resolve "solarized"  # Name or hex → normalized #rrggbb
-tint_lookup "solarized"   # Palette name → #rrggbb (exact match)
-tint_set "#002b36"        # Set background
-tint_reset                # Reset to default
-tint_pick "$current"      # Interactive picker → selected hex
-tint_list                 # Print all palette entries
+tint_supports_color       # Check if terminal supports OSC color sequences
+tint_resolve "dracula"    # Name → full theme string, hex → expanded #rrggbb
+tint_lookup "dracula"     # Palette name → theme string (#bg:#fg:#00:...:#15)
+tint_set "#002b36"        # Set background (auto-computes foreground)
+tint_set "$theme_string"  # Set full theme (bg + fg + 16 ANSI colors)
+tint_reset                # Reset to terminal default
+tint_pick "$current"      # Interactive picker → selected theme name
+tint_list                 # Print all theme names
 ```
 
 ## Shell Integration
 
-Auto-apply terminal colors when you `cd` into a project. The hook runs on every directory change — your terminal shifts to match whatever you're working on.
+Auto-apply terminal themes when you `cd` into a project. The hook runs on every directory change — your terminal shifts to match whatever you're working on.
 
 ```bash
 # bash (~/.bashrc)
@@ -123,21 +122,21 @@ Then create `.tint` files in project directories:
 
 ```bash
 echo "nord" > ~/projects/myproject/.tint
-echo "solarized" > ~/projects/work/.tint
+echo "dracula" > ~/projects/work/.tint
 echo "reset" > ~/projects/personal/.tint    # reset to default
 ```
 
-The hook walks up from `$PWD` to `/` looking for the nearest `.tint` file. Colors are **sticky** — if no `.tint` is found, the current color is kept. Place a `.tint` in `~` for a global default.
+The hook walks up from `$PWD` to `/` looking for the nearest `.tint` file. Themes are **sticky** — if no `.tint` is found, the current theme is kept. Place a `.tint` in `~` for a global default.
 
-A `.tint` file contains a single color — either a name (`solarized`) or hex (`#002b36`).
+A `.tint` file contains a single value — either a theme name (`dracula`), hex (`#002b36`), or `reset`. Inline comments are supported (`dracula # work theme`).
 
 Fish shell is not currently supported for hooks (completions work via `tint completions fish`).
 
-For tab completion of color names and subcommands, see [Shell Completions](#shell-completions).
+For tab completion of theme names and subcommands, see [Shell Completions](#shell-completions).
 
 ## Shell Completions
 
-Tab-complete color names, subcommands, and flags:
+Tab-complete theme names, subcommands, and flags:
 
 ```bash
 # bash (~/.bashrc)
@@ -152,25 +151,27 @@ tint completions fish > ~/.config/fish/completions/tint.fish
 
 ## Compatibility
 
-| Feature                     | Requirement                            |
-| --------------------------- | -------------------------------------- |
-| Interactive picker (`tint`) | Bash 3.2+                              |
-| All other commands          | Any POSIX shell (dash, ash, sh)        |
-| Terminal                    | OSC 11 support (most modern terminals) |
+| Feature                     | Requirement                                 |
+| --------------------------- | ------------------------------------------- |
+| Interactive picker (`tint`) | Bash 3.2+                                   |
+| All other commands          | Any POSIX shell (dash, ash, sh)             |
+| Terminal                    | OSC 4/10/11 support (most modern terminals) |
 
 Tested on: iTerm2, Alacritty, Kitty, Windows Terminal, GNOME Terminal, Konsole
 
-**tmux**: Requires `set -g allow-passthrough on` in your tmux config for OSC 11 sequences to reach the outer terminal.
-
-**`--get` / `tint_get`**: Relies on the terminal responding to an OSC 11 query within 200ms. This works reliably on local and most remote terminals, but may time out on very slow SSH connections or terminals that don't support the query.
+**tmux**: Requires `set -g allow-passthrough on` in your tmux config for OSC sequences to reach the outer terminal.
 
 ## How It Works
 
-`tint` uses [OSC 11](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) escape sequences:
+`tint` uses [OSC escape sequences](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h3-Operating-System-Commands) to control terminal colors:
 
-- `\e]11;#rrggbb\e\\` - Set background color
-- `\e]11;?\e\\` - Get current background
-- `\e]111\e\\` - Reset to default
+- `\e]11;#rrggbb\e\\` — Set background color (OSC 11)
+- `\e]10;#rrggbb\e\\` — Set foreground color (OSC 10)
+- `\e]4;N;#rrggbb\e\\` — Set ANSI color N (OSC 4, N=0-15)
+- `\e]11;?\e\\` — Query current background
+- `\e]111\e\\` — Reset background to default
+- `\e]110\e\\` — Reset foreground to default
+- `\e]104\e\\` — Reset all ANSI colors to default
 
 ## Development
 

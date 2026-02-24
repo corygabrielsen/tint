@@ -19,7 +19,7 @@ _load_tint() {
 @test "tint --help shows usage" {
     run tint --help
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "terminal background color picker" ]]
+    [[ "$output" =~ "terminal theme switcher" ]]
 }
 
 @test "tint --version shows version" {
@@ -28,11 +28,11 @@ _load_tint() {
     [[ "$output" =~ "tint" ]]
 }
 
-@test "tint --list shows colors" {
+@test "tint --list shows themes" {
     run tint --list
     [ "$status" -eq 0 ]
-    grep -q '^#002b36    solarized' <<<"$output"
-    grep -q '^#2e3440    nord' <<<"$output"
+    grep -q '^solarized$' <<<"$output"
+    grep -q '^dracula$' <<<"$output"
 }
 
 @test "tint -h matches --help" {
@@ -60,16 +60,6 @@ _load_tint() {
     run tint --version
     [ "$status" -eq 0 ]
     [ "$short" = "$output" ]
-}
-
-@test "tint -g matches --get" {
-    # Both may fail without a real terminal, so compare exit status and output
-    run tint -g
-    local short_status="$status"
-    local short_output="$output"
-    run tint --get
-    [ "$short_status" -eq "$status" ]
-    [ "$short_output" = "$output" ]
 }
 
 @test "tint completions bash outputs bash completion" {
@@ -128,17 +118,18 @@ _load_tint() {
     [[ "$output" =~ "reset" ]]
 }
 
-@test "tint random picks a palette color" {
+@test "tint random picks a palette theme" {
     run tint random
     [ "$status" -eq 0 ]
-    # Output should be "name #hex"
-    [[ "$output" =~ ^[a-zA-Z0-9].+\ #[0-9a-fA-F]{6}$ ]]
+    # Output should be a theme name (2+ chars — all built-in names qualify;
+    # the palette grammar allows 1-char names but none exist in practice)
+    [[ "$output" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]+$ ]]
 }
 
-@test "tint unknown-color fails" {
+@test "tint unknown-theme fails" {
     run tint nonexistent
     [ "$status" -eq 1 ]
-    [[ "$output" =~ "Unknown color" ]]
+    [[ "$output" =~ "Unknown theme" ]]
 }
 
 @test "tint unknown-option fails" {
@@ -183,7 +174,7 @@ INNEREOF
     local count
     count=$(echo "$output" | grep -c "pre_source")
     [ "$count" -eq 1 ]
-    [[ "$output" =~ "lookup=#002b36" ]]
+    [[ "$output" =~ "lookup=#002b36:" ]]
 }
 
 @test "tint sourced from script containing TINT_VERSION does not run main" {
@@ -204,7 +195,7 @@ INNEREOF
     # Should see caller output, NOT tint version info
     [[ "$output" =~ "caller_only" ]]
     [[ ! "$output" =~ "tint " ]]
-    [[ "$output" =~ "lookup=#002b36" ]]
+    [[ "$output" =~ "lookup=#002b36:" ]]
 }
 
 @test "_tint_is_main guards BASH_SOURCE array access" {
@@ -237,17 +228,32 @@ INNEREOF
 # Library API
 # =============================================================================
 
-@test "tint_lookup finds color" {
+@test "tint_lookup finds theme" {
     # Source directly - sourcing via function scopes variables to that function
     source "$DIR/tint"
     local result
     result=$(tint_lookup "solarized")
-    [ "$result" = "#002b36" ]
+    # Returns full theme string: #bg:#fg:#00:...:#15
+    [[ "$result" == "#002b36:#839496:#073642:"* ]]
 }
 
 @test "tint_lookup fails for unknown" {
     _load_tint
     run tint_lookup "nonexistent"
+    [ "$status" -eq 1 ]
+}
+
+@test "tint_lookup rejects glob metacharacters" {
+    # case pattern is quoted ("$name:"*) so globs in input match literally.
+    # d* must NOT match dracula, ay? must NOT match ayu, etc.
+    source "$DIR/tint"
+    run tint_lookup 'd*'
+    [ "$status" -eq 1 ]
+    run tint_lookup '*'
+    [ "$status" -eq 1 ]
+    run tint_lookup 'ay?'
+    [ "$status" -eq 1 ]
+    run tint_lookup '[a-z]yu'
     [ "$status" -eq 1 ]
 }
 
@@ -262,12 +268,19 @@ INNEREOF
     # Source directly - sourcing via function scopes variables to that function
     source "$DIR/tint"
     local result
-    result=$(tint_resolve "nord")
-    [ "$result" = "#2e3440" ]
+    result=$(tint_resolve "dracula")
+    # tint_resolve returns full theme string for named lookups
+    [[ "$result" == "#282a36:#f8f8f2:#262626:"* ]]
 }
 
 @test "tint reset resets to default" {
-    run tint reset
+    # Verify the CLI prints the expected message (OSC sequences go to
+    # /dev/tty and are tested separately in "type tint_reset" test)
+    source "$DIR/tint"
+    run bash -c "
+        source '$DIR/tint'
+        tint reset
+    "
     [ "$status" -eq 0 ]
     [[ "$output" =~ "Reset to terminal default" ]]
 }
@@ -306,34 +319,138 @@ INNEREOF
 }
 
 # =============================================================================
+# Foreground Color
+# =============================================================================
+
+@test "_tint_fg_for_bg returns black for light bg" {
+    source "$DIR/tint"
+    local result
+    result=$(_tint_fg_for_bg "#ffffff")
+    [ "$result" = "#000000" ]
+}
+
+@test "_tint_fg_for_bg returns white for dark bg" {
+    source "$DIR/tint"
+    local result
+    result=$(_tint_fg_for_bg "#000000")
+    [ "$result" = "#ffffff" ]
+}
+
+@test "_tint_fg_for_bg boundary at luma 128" {
+    # RGB (0, 0, 219) → luma = (0*299 + 0*587 + 219*114) / 1000 = 24 → dark → white
+    # RGB (128, 128, 128) → luma = 128 → not > 128 → white
+    # RGB (129, 129, 129) → luma = 129 → > 128 → black
+    source "$DIR/tint"
+    local result
+    # Exactly at 128: (128*299 + 128*587 + 128*114) / 1000 = 128 → not > 128 → white
+    result=$(_tint_fg_for_bg "#808080")
+    [ "$result" = "#ffffff" ]
+    # Just above: (129*299 + 129*587 + 129*114) / 1000 = 129 → > 128 → black
+    result=$(_tint_fg_for_bg "#818181")
+    [ "$result" = "#000000" ]
+}
+
+@test "_tint_fg_for_bg works with light bg" {
+    source "$DIR/tint"
+    local result
+    # #fdf6e3 is light → should return black
+    result=$(_tint_fg_for_bg "#fdf6e3")
+    [ "$result" = "#000000" ]
+}
+
+@test "_tint_fg_for_bg works with solarized dark" {
+    source "$DIR/tint"
+    local result
+    # solarized:#002b36 is dark → should return white
+    result=$(_tint_fg_for_bg "#002b36")
+    [ "$result" = "#ffffff" ]
+}
+
+@test "tint_reset sends OSC 111, OSC 110, and OSC 104" {
+    # Verify tint_reset includes all three reset codes
+    source "$DIR/tint"
+    local fn_body
+    fn_body=$(type tint_reset)
+    [[ "$fn_body" == *"111"* ]]
+    [[ "$fn_body" == *"110"* ]]
+    [[ "$fn_body" == *"104"* ]]
+}
+
+@test "tint_set sends both OSC 11 and OSC 10" {
+    source "$DIR/tint"
+    local fn_body
+    fn_body=$(type tint_set)
+    [[ "$fn_body" == *"11;"* ]]
+    [[ "$fn_body" == *"10;"* ]]
+}
+
+@test "tint_set auto-computes foreground" {
+    source "$DIR/tint"
+    local fg
+    # For a dark bg, fg should be white
+    fg=$(_tint_fg_for_bg "#000000")
+    [ "$fg" = "#ffffff" ]
+    # For a light bg, fg should be black
+    fg=$(_tint_fg_for_bg "#ffffff")
+    [ "$fg" = "#000000" ]
+}
+
+@test "tint_set uses explicit foreground when provided" {
+    source "$DIR/tint"
+    local fn_body
+    fn_body=$(type tint_set)
+    # Second arg path exists (literal $2, not variable expansion)
+    # shellcheck disable=SC2016
+    [[ "$fn_body" == *'$2'* ]] || [[ "$fn_body" == *'"$2"'* ]]
+}
+
+# =============================================================================
 # Palette
 # =============================================================================
 
-@test "palette has expected colors" {
+@test "palette has expected themes" {
     # Source directly - sourcing via function scopes the variable to that function
     source "$DIR/tint"
-    [[ "$TINT_PALETTE" =~ "vscode:#1e1e1e" ]]
-    [[ "$TINT_PALETTE" =~ "solarized:#002b36" ]]
-    [[ "$TINT_PALETTE" =~ "nord:#2e3440" ]]
+    [[ "$TINT_PALETTE" =~ "ayu:#0a0e14:" ]]
+    [[ "$TINT_PALETTE" =~ "catppuccin:#1e1e2e:" ]]
+    [[ "$TINT_PALETTE" =~ "cobalt:#132738:" ]]
+    [[ "$TINT_PALETTE" =~ "dracula:#282a36:" ]]
+    [[ "$TINT_PALETTE" =~ "everforest:#2d353b:" ]]
+    [[ "$TINT_PALETTE" =~ "github:#101216:" ]]
+    [[ "$TINT_PALETTE" =~ "gruvbox:#282828:" ]]
+    [[ "$TINT_PALETTE" =~ "horizon:#1c1e26:" ]]
+    [[ "$TINT_PALETTE" =~ "kanagawa:#1f1f28:" ]]
+    [[ "$TINT_PALETTE" =~ "material:#1e282c:" ]]
+    [[ "$TINT_PALETTE" =~ "monokai:#272822:" ]]
+    [[ "$TINT_PALETTE" =~ "night-owl:#011627:" ]]
+    [[ "$TINT_PALETTE" =~ "nord:#2e3440:" ]]
+    [[ "$TINT_PALETTE" =~ "onedark:#1e2127:" ]]
+    [[ "$TINT_PALETTE" =~ "palenight:#292d3e:" ]]
+    [[ "$TINT_PALETTE" =~ "rose-pine:#191724:" ]]
+    [[ "$TINT_PALETTE" =~ "solarized:#002b36:" ]]
+    [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
+    [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
+    [ "$(_tint_palette_count)" -eq 19 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
     # Names starting with - would be confused with CLI flags by cut/sed/grep
+    local full=':#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
     source "$DIR/tint"
-    export TINT_PALETTE=$'-badname:#abcdef\ngood:#123456'
+    export TINT_PALETTE="-badname:#abcdef${full}"$'\n'"good:#123456${full}"
     source "$DIR/tint"
     # Only the valid name should survive
     [ "$(_tint_palette_count)" -eq 1 ]
-    [ "$(_tint_palette_get 1)" = "good:#123456" ]
+    [[ "$(_tint_palette_get 1)" == "good:#123456"* ]]
 }
 
 @test "TINT_PALETTE env overrides default" {
     # Set env before sourcing so _tint_load_palette sees it as a string
-    export TINT_PALETTE=$'custom:#abcdef'
+    export TINT_PALETTE='custom:#abcdef:#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
     source "$DIR/tint"
 
     [ "$(_tint_palette_count)" -eq 1 ]
-    [ "$(_tint_palette_get 1)" = "custom:#abcdef" ]
+    [[ "$(_tint_palette_get 1)" == "custom:#abcdef:"* ]]
 }
 
 @test "empty palette does not crash _tint_load_palette_arrays" {
@@ -353,34 +470,76 @@ INNEREOF
     [ "$status" -eq 0 ]
 }
 
+@test "palette validates full 18-color theme entries" {
+    # Only entries with all 18 hex values (bg + fg + 16 ANSI) pass validation
+    source "$DIR/tint"
+    local full='test:#aabbcc:#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
+    export TINT_PALETTE="$full"
+    source "$DIR/tint"
+    [ "$(_tint_palette_count)" -eq 1 ]
+    [[ "$(_tint_palette_get 1)" == "test:#aabbcc:"* ]]
+}
+
+@test "palette rejects legacy bg-only entries" {
+    # Old name:#bg format is no longer valid
+    source "$DIR/tint"
+    export TINT_PALETTE='old:#abcdef'
+    source "$DIR/tint"
+    [ "$(_tint_palette_count)" -eq 0 ]
+}
+
+@test "tint_lookup returns full theme string" {
+    source "$DIR/tint"
+    local result
+    result=$(tint_lookup "dracula")
+    # Should contain bg, fg, and 16 ANSI colors (18 colon-separated hex values)
+    local field_count
+    field_count=$(echo "$result" | tr ':' '\n' | wc -l)
+    [ "$field_count" -eq 18 ]
+    # First field is bg
+    [[ "$result" == "#282a36:"* ]]
+    # Second field is fg
+    [[ "$result" == "#282a36:#f8f8f2:"* ]]
+}
+
+@test "tint --list shows only names" {
+    run tint --list
+    [ "$status" -eq 0 ]
+    # Each line should be a bare theme name with no hex values
+    local line
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]
+        [[ ! "$line" =~ '#' ]]
+    done <<<"$output"
+}
+
 # =============================================================================
 # Code Invariants
 # =============================================================================
 
-@test "_tint_get_raw is defined as subshell function" {
-    # _tint_get_raw must use ( ) not { } so trap/stty changes are isolated.
-    # Match the function definition: _tint_get_raw() (
-    grep -qE '_tint_get_raw\(\)[[:space:]]*\(' "$DIR/tint" || {
-        echo "_tint_get_raw is not a subshell function"
+@test "_tint_query_osc_color is defined as subshell function" {
+    # _tint_query_osc_color must use ( ) not { } so trap/stty changes are isolated.
+    grep -qE '_tint_query_osc_color\(\)[[:space:]]*\(' "$DIR/tint" || {
+        echo "_tint_query_osc_color is not a subshell function"
         return 1
     }
 }
 
-@test "tint_get has no bash-specific trap branching" {
+@test "_tint_query_osc_color has no bash-specific trap branching" {
     # With subshell isolation, there should be no BASH_VERSION checks or
     # trap -p / eval saved trap logic in the query functions.
     # Note: can't use `! grep` in bats — set -e is suppressed by `!`,
     # so failures would be silently ignored.
     local query_section
-    query_section=$(grep -A30 '_tint_get_raw' "$DIR/tint")
+    query_section=$(grep -A30 '_tint_query_osc_color' "$DIR/tint")
     if echo "$query_section" | grep -q 'BASH_VERSION'; then
-        echo "Found BASH_VERSION in _tint_get_raw"; return 1
+        echo "Found BASH_VERSION in _tint_query_osc_color"; return 1
     fi
     if echo "$query_section" | grep -q 'trap -p'; then
-        echo "Found trap -p in _tint_get_raw"; return 1
+        echo "Found trap -p in _tint_query_osc_color"; return 1
     fi
     if echo "$query_section" | grep -q '_tq_saved_trap'; then
-        echo "Found _tq_saved_trap in _tint_get_raw"; return 1
+        echo "Found _tq_saved_trap in _tint_query_osc_color"; return 1
     fi
 }
 
@@ -390,182 +549,182 @@ INNEREOF
 
 @test "model: down from 0" {
     source "$DIR/tint"
-    _TINT_PK_IDX=0
-    _TINT_PK_OLD_IDX=0
-    local last_idx=9
+    _TINT_PICKER_IDX=0
+    _TINT_PICKER_OLD_IDX=0
+    local _tint_last_idx=9
     _tint_model_move_cursor down
-    [ "$_TINT_PK_IDX" -eq 1 ]
-    [ "$_TINT_PK_OLD_IDX" -eq 0 ]
+    [ "$_TINT_PICKER_IDX" -eq 1 ]
+    [ "$_TINT_PICKER_OLD_IDX" -eq 0 ]
 }
 
 @test "model: up from 0 wraps to last" {
     source "$DIR/tint"
-    _TINT_PK_IDX=0
-    _TINT_PK_OLD_IDX=0
-    local last_idx=9
+    _TINT_PICKER_IDX=0
+    _TINT_PICKER_OLD_IDX=0
+    local _tint_last_idx=9
     _tint_model_move_cursor up
-    [ "$_TINT_PK_IDX" -eq 9 ]
-    [ "$_TINT_PK_OLD_IDX" -eq 0 ]
+    [ "$_TINT_PICKER_IDX" -eq 9 ]
+    [ "$_TINT_PICKER_OLD_IDX" -eq 0 ]
 }
 
 @test "model: down from last wraps to 0" {
     source "$DIR/tint"
-    _TINT_PK_IDX=9
-    _TINT_PK_OLD_IDX=0
-    local last_idx=9
+    _TINT_PICKER_IDX=9
+    _TINT_PICKER_OLD_IDX=0
+    local _tint_last_idx=9
     _tint_model_move_cursor down
-    [ "$_TINT_PK_IDX" -eq 0 ]
-    [ "$_TINT_PK_OLD_IDX" -eq 9 ]
+    [ "$_TINT_PICKER_IDX" -eq 0 ]
+    [ "$_TINT_PICKER_OLD_IDX" -eq 9 ]
 }
 
 @test "model: up from middle" {
     source "$DIR/tint"
-    _TINT_PK_IDX=5
-    _TINT_PK_OLD_IDX=0
-    local last_idx=9
+    _TINT_PICKER_IDX=5
+    _TINT_PICKER_OLD_IDX=0
+    local _tint_last_idx=9
     _tint_model_move_cursor up
-    [ "$_TINT_PK_IDX" -eq 4 ]
-    [ "$_TINT_PK_OLD_IDX" -eq 5 ]
+    [ "$_TINT_PICKER_IDX" -eq 4 ]
+    [ "$_TINT_PICKER_OLD_IDX" -eq 5 ]
 }
 
 @test "model: consecutive moves track OLD_IDX" {
     source "$DIR/tint"
-    _TINT_PK_IDX=0
-    _TINT_PK_OLD_IDX=0
-    local last_idx=9
+    _TINT_PICKER_IDX=0
+    _TINT_PICKER_OLD_IDX=0
+    local _tint_last_idx=9
     _tint_model_move_cursor down
     _tint_model_move_cursor down
     _tint_model_move_cursor down
-    [ "$_TINT_PK_IDX" -eq 3 ]
-    [ "$_TINT_PK_OLD_IDX" -eq 2 ]
+    [ "$_TINT_PICKER_IDX" -eq 3 ]
+    [ "$_TINT_PICKER_OLD_IDX" -eq 2 ]
 }
 
 @test "scroll: all fit on screen" {
     source "$DIR/tint"
-    _TINT_PK_IDX=0
-    _TINT_PK_TOTAL=5
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=0
-    _TINT_PK_RENDERED_ROWS=0
+    _TINT_PICKER_IDX=0
+    _TINT_PICKER_TOTAL=5
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=0
+    _TINT_PICKER_RENDERED_ROWS=0
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_START" -eq 0 ]
-    [ "$_TINT_PK_WIN_END" -eq 4 ]
-    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 4 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 0 ]
 }
 
 @test "scroll: initial window centers cursor" {
     source "$DIR/tint"
-    _TINT_PK_IDX=15
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=0
-    _TINT_PK_RENDERED_ROWS=0
+    _TINT_PICKER_IDX=15
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=0
+    _TINT_PICKER_RENDERED_ROWS=0
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_START" -eq 10 ]
-    [ "$_TINT_PK_WIN_END" -eq 19 ]
-    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 10 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 19 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 1 ]
 }
 
 @test "scroll: initial window clamps to start" {
     source "$DIR/tint"
-    _TINT_PK_IDX=2
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=0
-    _TINT_PK_RENDERED_ROWS=0
+    _TINT_PICKER_IDX=2
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=0
+    _TINT_PICKER_RENDERED_ROWS=0
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_START" -eq 0 ]
-    [ "$_TINT_PK_WIN_END" -eq 9 ]
-    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 9 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 0 ]
 }
 
 @test "scroll: initial window clamps to end" {
     source "$DIR/tint"
-    _TINT_PK_IDX=28
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=0
-    _TINT_PK_RENDERED_ROWS=0
+    _TINT_PICKER_IDX=28
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=0
+    _TINT_PICKER_RENDERED_ROWS=0
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_START" -eq 20 ]
-    [ "$_TINT_PK_WIN_END" -eq 29 ]
-    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 20 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 29 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 1 ]
 }
 
 @test "scroll: cursor below window shifts down" {
     source "$DIR/tint"
-    _TINT_PK_IDX=15
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=9
-    _TINT_PK_RENDERED_ROWS=5
+    _TINT_PICKER_IDX=15
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=9
+    _TINT_PICKER_RENDERED_ROWS=5
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_END" -eq 15 ]
-    [ "$_TINT_PK_WIN_START" -eq 6 ]
-    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 15 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 6 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 1 ]
 }
 
 @test "scroll: cursor above window shifts up" {
     source "$DIR/tint"
-    _TINT_PK_IDX=3
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=10
-    _TINT_PK_WIN_END=19
-    _TINT_PK_RENDERED_ROWS=5
+    _TINT_PICKER_IDX=3
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=10
+    _TINT_PICKER_WIN_END=19
+    _TINT_PICKER_RENDERED_ROWS=5
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_START" -eq 3 ]
-    [ "$_TINT_PK_WIN_END" -eq 12 ]
-    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 3 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 12 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 1 ]
 }
 
 @test "scroll: cursor within window no scroll" {
     source "$DIR/tint"
-    _TINT_PK_IDX=5
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=9
-    _TINT_PK_RENDERED_ROWS=5
+    _TINT_PICKER_IDX=5
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=9
+    _TINT_PICKER_RENDERED_ROWS=5
     _tint_update_scroll_window
-    [ "$_TINT_PK_WIN_START" -eq 0 ]
-    [ "$_TINT_PK_WIN_END" -eq 9 ]
-    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 9 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 0 ]
 }
 
 @test "scroll: scrolled flag resets after no-scroll update" {
     source "$DIR/tint"
-    _TINT_PK_IDX=15
-    _TINT_PK_TOTAL=30
-    _TINT_PK_VISIBLE=10
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=9
-    _TINT_PK_RENDERED_ROWS=5
+    _TINT_PICKER_IDX=15
+    _TINT_PICKER_TOTAL=30
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=9
+    _TINT_PICKER_RENDERED_ROWS=5
     _tint_update_scroll_window
-    [ "$_TINT_PK_SCROLLED" -eq 1 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 1 ]
     # Now move within the window — scrolled should reset
-    _TINT_PK_IDX=10
+    _TINT_PICKER_IDX=10
     _tint_update_scroll_window
-    [ "$_TINT_PK_SCROLLED" -eq 0 ]
+    [ "$_TINT_PICKER_SCROLLED" -eq 0 ]
 }
 
 # Helper: set up minimal state for _tint_render_row tests
 _setup_render_row() {
     source "$DIR/tint"
-    _tint_names=(unused "solarized")
-    _tint_hexes=(unused "#002b36")
-    _tint_r=(0 0) _tint_g=(0 43) _tint_b=(0 54)
-    _tint_fg=(30 97)
-    _TINT_PK_TOTAL=2
-    _TINT_PK_DEFAULT=0
-    _TINT_PK_ORIGINAL_BG="#f0e1d2"
-    _TINT_ROW_WIDTH=40
-    _tint_buf=""
+    _tint_themes_name=(unused "solarized")
+    _tint_themes_bg=(unused "#002b36")
+    _tint_themes_bg_r=(0 0) _tint_themes_bg_g=(0 43) _tint_themes_bg_b=(0 54)
+    _tint_picker_text_sgr=(30 97)
+    _TINT_PICKER_TOTAL=2
+    _TINT_PICKER_DEFAULT=0
+    _TINT_PICKER_ORIGINAL_BG="#f0e1d2"
+    _TINT_PICKER_ROW_WIDTH=40
+    _tint_picker_buf=""
 }
 
 # =============================================================================
@@ -575,117 +734,112 @@ _setup_render_row() {
 @test "render: highlighted row has cursor marker" {
     _setup_render_row
     _tint_render_row 1 1
-    [[ "$_tint_buf" == *"> "* ]]
+    [[ "$_tint_picker_buf" == *"> "* ]]
 }
 
 @test "render: unhighlighted row has no marker" {
     _setup_render_row
     _tint_render_row 1 0
-    [[ "$_tint_buf" != *"> "* ]]
-    [[ "$_tint_buf" != *"* "* ]]
+    [[ "$_tint_picker_buf" != *"> "* ]]
+    [[ "$_tint_picker_buf" != *"* "* ]]
 }
 
 @test "render: default row has star marker" {
     _setup_render_row
-    _TINT_PK_DEFAULT=1
+    _TINT_PICKER_DEFAULT=1
     _tint_render_row 1 0
-    [[ "$_tint_buf" == *"* "* ]]
+    [[ "$_tint_picker_buf" == *"* "* ]]
 }
 
 @test "render: row 0 with original bg shows unchanged" {
     _setup_render_row
     _tint_render_row 0 0
-    [[ "$_tint_buf" == *"(unchanged)"* ]]
+    [[ "$_tint_picker_buf" == *"(unchanged)"* ]]
 }
 
 @test "render: row 0 without original bg shows reset to default" {
     _setup_render_row
-    _TINT_PK_ORIGINAL_BG=""
+    _TINT_PICKER_ORIGINAL_BG=""
     _tint_render_row 0 0
-    [[ "$_tint_buf" == *"(reset to default)"* ]]
+    [[ "$_tint_picker_buf" == *"(reset to default)"* ]]
 }
 
-@test "render: row includes color name" {
+@test "render: row includes theme name" {
     _setup_render_row
     _tint_render_row 1 0
-    [[ "$_tint_buf" == *"solarized"* ]]
+    [[ "$_tint_picker_buf" == *"solarized"* ]]
 }
 
-@test "render: row includes hex value" {
-    _setup_render_row
-    _tint_render_row 1 0
-    [[ "$_tint_buf" == *"002b36"* ]]
-}
 
 @test "render: highlighted row uses normal weight" {
     _setup_render_row
     _tint_render_row 1 1
-    [[ "$_tint_buf" == *"48;2;"* ]]
-    [[ "$_tint_buf" != *$'\e[2;'* ]]
+    [[ "$_tint_picker_buf" == *"48;2;"* ]]
+    [[ "$_tint_picker_buf" != *$'\e[2;'* ]]
 }
 
 @test "render: unhighlighted row uses dim" {
     _setup_render_row
     _tint_render_row 1 0
-    [[ "$_tint_buf" == *$'\e[2;'* ]]
+    [[ "$_tint_picker_buf" == *$'\e[2;'* ]]
 }
 
 @test "render: row 0 default also gets star" {
     _setup_render_row
-    _TINT_PK_DEFAULT=1
+    _TINT_PICKER_DEFAULT=1
     _tint_render_row 0 0
-    [[ "$_tint_buf" == *"* "* ]]
+    [[ "$_tint_picker_buf" == *"* "* ]]
 }
 
 @test "scroll indicator: both arrows when scrolled mid" {
     source "$DIR/tint"
-    _TINT_PK_WIN_START=5
-    _TINT_PK_WIN_END=14
-    _TINT_PK_TOTAL=30
-    _tint_buf=""
+    _TINT_PICKER_WIN_START=5
+    _TINT_PICKER_WIN_END=14
+    _TINT_PICKER_TOTAL=30
+    _tint_picker_buf=""
     _tint_render_scroll_indicator
-    [[ "$_tint_buf" == *"↑ 5 more"* ]]
-    [[ "$_tint_buf" == *"↓ 15 more"* ]]
+    [[ "$_tint_picker_buf" == *"↑ 5 more"* ]]
+    [[ "$_tint_picker_buf" == *"↓ 15 more"* ]]
 }
 
 @test "scroll indicator: up arrow only at bottom" {
     source "$DIR/tint"
-    _TINT_PK_WIN_START=20
-    _TINT_PK_WIN_END=29
-    _TINT_PK_TOTAL=30
-    _tint_buf=""
+    _TINT_PICKER_WIN_START=20
+    _TINT_PICKER_WIN_END=29
+    _TINT_PICKER_TOTAL=30
+    _tint_picker_buf=""
     _tint_render_scroll_indicator
-    [[ "$_tint_buf" == *"↑ 20 more"* ]]
-    [[ "$_tint_buf" != *"↓"* ]]
+    [[ "$_tint_picker_buf" == *"↑ 20 more"* ]]
+    [[ "$_tint_picker_buf" != *"↓"* ]]
 }
 
 @test "scroll indicator: down arrow only at top" {
     source "$DIR/tint"
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=9
-    _TINT_PK_TOTAL=30
-    _tint_buf=""
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=9
+    _TINT_PICKER_TOTAL=30
+    _tint_picker_buf=""
     _tint_render_scroll_indicator
-    [[ "$_tint_buf" == *"↓ 20 more"* ]]
-    [[ "$_tint_buf" != *"↑"* ]]
+    [[ "$_tint_picker_buf" == *"↓ 20 more"* ]]
+    [[ "$_tint_picker_buf" != *"↑"* ]]
 }
 
 @test "scroll indicator: no indicator when all visible" {
     source "$DIR/tint"
-    _TINT_PK_WIN_START=0
-    _TINT_PK_WIN_END=4
-    _TINT_PK_TOTAL=5
-    _tint_buf=""
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=4
+    _TINT_PICKER_TOTAL=5
+    _tint_picker_buf=""
     _tint_render_scroll_indicator
-    [[ "$_tint_buf" != *"↑"* ]]
-    [[ "$_tint_buf" != *"↓"* ]]
+    [[ "$_tint_picker_buf" != *"↑"* ]]
+    [[ "$_tint_picker_buf" != *"↓"* ]]
 }
 
 # =============================================================================
 # Picker: OSC 11 Guard
 # =============================================================================
 
-# Helper: run tint_pick in a PTY with tint_get stubbed to fail.
+# Helper: run tint_pick in a PTY with _tint_query_terminal_bg stubbed to fail.
 # Accepts optional env var exports to simulate tmux/SSH contexts.
 # Usage: _pick_unsupported [env_setup_cmd]
 # Sets: UNSUPPORTED_OUTPUT (captured stderr+stdout)
@@ -702,7 +856,7 @@ if pid == 0:
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
     cmd_prefix = (env_setup + '; ') if env_setup else ''
-    cmd = cmd_prefix + "source '" + tint_dir + "/tint'; tint_get() { return 1; }; tint_pick 2>&1; echo EXIT:$?"
+    cmd = cmd_prefix + "source '" + tint_dir + "/tint'; _tint_query_terminal_bg() { return 1; }; tint_pick 2>&1; echo EXIT:$?"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -774,6 +928,271 @@ PYEOF
 }
 
 # =============================================================================
+# Picker: Theme Auto-Detect (ORIGINAL_THEME_IDX)
+# =============================================================================
+
+# Helper: set up minimal state for auto-detect tests.
+# Accepts TINT_PALETTE content, stub bg, and optional stub fg.
+# Stubs terminal functions so _tint_init_picker can run without a PTY.
+# Usage: _setup_autodetect <palette> <orig_bg> [orig_fg]
+# After call: check _TINT_PICKER_ORIGINAL_THEME_IDX and _TINT_PICKER_DEFAULT
+_setup_autodetect() {
+    source "$DIR/tint"
+    TINT_PALETTE="$1"
+    local stub_bg="$2" stub_fg="${3:-}"
+    _tint_query_terminal_bg() { printf '%s' "$stub_bg"; }
+    if [ -n "$stub_fg" ]; then
+        _tint_query_terminal_fg() { printf '%s' "$stub_fg"; }
+    else
+        _tint_query_terminal_fg() { return 1; }
+    fi
+    _tint_get_terminal_height() { echo 24; }
+    _tint_install_signal_traps() { :; }
+    _tint_setup_terminal() { :; }
+    _tint_init_picker
+}
+
+@test "auto-detect: unique bg match sets ORIGINAL_THEME_IDX" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#1a1b26:#c0caf5' \
+        '#002b36' '#839496'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 1 ]
+}
+
+@test "auto-detect: no bg match sets ORIGINAL_THEME_IDX to 0" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#1a1b26:#c0caf5' \
+        '#ffffff' '#000000'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 0 ]
+}
+
+@test "auto-detect: multiple bg matches disambiguated by fg" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#c0caf5\ngamma:#1a1b26:#c0caf5' \
+        '#002b36' '#c0caf5'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 2 ]
+}
+
+@test "auto-detect: multiple bg matches, fg matches first candidate" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#c0caf5\ngamma:#1a1b26:#c0caf5' \
+        '#002b36' '#839496'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 1 ]
+}
+
+@test "auto-detect: multiple bg matches, no fg available falls back to 0" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#c0caf5' \
+        '#002b36'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 0 ]
+}
+
+@test "auto-detect: multiple bg matches, fg matches none falls back to 0" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#c0caf5' \
+        '#002b36' '#ffffff'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 0 ]
+}
+
+@test "auto-detect: multiple bg+fg matches (still ambiguous) falls back to 0" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#839496\ngamma:#1a1b26:#c0caf5' \
+        '#002b36' '#839496'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 0 ]
+}
+
+@test "auto-detect: case-insensitive bg matching" {
+    _setup_autodetect \
+        $'alpha:#002B36:#839496' \
+        '#002b36' '#839496'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 1 ]
+}
+
+@test "auto-detect: case-insensitive fg tiebreaker" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#C0CAF5' \
+        '#002b36' '#c0caf5'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 2 ]
+}
+
+@test "auto-detect: star marker falls back to auto-detect when no explicit arg" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#1a1b26:#c0caf5' \
+        '#002b36' '#839496'
+    # No explicit arg → _TINT_PICKER_DEFAULT should adopt ORIGINAL_THEME_IDX
+    [ "$_TINT_PICKER_DEFAULT" -eq "$_TINT_PICKER_ORIGINAL_THEME_IDX" ]
+    [ "$_TINT_PICKER_DEFAULT" -eq 1 ]
+}
+
+@test "auto-detect: star marker keeps explicit arg over auto-detect" {
+    source "$DIR/tint"
+    TINT_PALETTE=$'alpha:#002b36:#839496\nbeta:#1a1b26:#c0caf5'
+    # shellcheck disable=SC2317
+    _tint_query_terminal_bg() { printf '%s' '#002b36'; }
+    # shellcheck disable=SC2317
+    _tint_query_terminal_fg() { printf '%s' '#839496'; }
+    # shellcheck disable=SC2317
+    _tint_get_terminal_height() { echo 24; }
+    # shellcheck disable=SC2317
+    _tint_install_signal_traps() { :; }
+    # shellcheck disable=SC2317
+    _tint_setup_terminal() { :; }
+    # Pass explicit theme name → DEFAULT should point there, not auto-detect
+    _tint_init_picker "beta"
+    [ "$_TINT_PICKER_DEFAULT" -eq 2 ]
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 1 ]
+}
+
+@test "auto-detect: full theme string disambiguates by fg" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#002b36:#c0caf5' \
+        '#002b36' '#c0caf5'
+    # Pass beta's full theme string — should select beta (idx 2), not alpha
+    _tint_find_default_index '#002b36:#c0caf5'
+    [ "$_TINT_PICKER_DEFAULT" -eq 2 ]
+}
+
+@test "auto-detect: empty ORIGINAL_BG leaves ORIGINAL_THEME_IDX at 0" {
+    source "$DIR/tint"
+    TINT_PALETTE=$'alpha:#002b36:#839496'
+    # shellcheck disable=SC2317
+    _tint_query_terminal_bg() { printf '%s' ''; }
+    # shellcheck disable=SC2317
+    _tint_query_terminal_fg() { printf '%s' '#839496'; }
+    # shellcheck disable=SC2317
+    _tint_get_terminal_height() { echo 24; }
+    # shellcheck disable=SC2317
+    _tint_install_signal_traps() { :; }
+    # shellcheck disable=SC2317
+    _tint_setup_terminal() { :; }
+    _tint_init_picker
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 0 ]
+}
+
+@test "auto-detect: unique bg match without fg trusts bg" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#1a1b26:#c0caf5' \
+        '#002b36'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 1 ]
+}
+
+@test "auto-detect: single bg match with mismatched fg rejects theme" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496\nbeta:#1a1b26:#c0caf5' \
+        '#002b36' '#ffffff'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 0 ]
+}
+
+@test "auto-detect: full 18-field theme strings with fg disambiguation" {
+    _setup_autodetect \
+        $'alpha:#002b36:#839496:#073642:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#002b36:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3\nbeta:#002b36:#c0caf5:#073642:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#002b36:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3' \
+        '#002b36' '#c0caf5'
+    [ "$_TINT_PICKER_ORIGINAL_THEME_IDX" -eq 2 ]
+}
+
+@test "restore: theme match + queried fg → tint_set theme fg" {
+    run bash -c '
+        source "$1"
+        TINT_PALETTE="alpha:#002b36:#839496"
+        _tint_load_palette_arrays
+        _TINT_PICKER_PREVIEWED=1
+        _TINT_PICKER_ORIGINAL_THEME_IDX=1
+        _TINT_PICKER_ORIGINAL_BG="#002b36"
+        _TINT_PICKER_ORIGINAL_FG="#ffffff"
+        tint_set() { printf "tint_set"; for a; do printf "|%s" "$a"; done; echo; }
+        tint_reset() { echo "tint_reset"; }
+        _tint_restore_original_colors
+    ' -- "$DIR/tint"
+    [ "$status" -eq 0 ]
+    [ "$output" = "tint_set|#002b36:#839496|#ffffff" ]
+}
+
+@test "restore: theme match, no fg → tint_set theme only" {
+    run bash -c '
+        source "$1"
+        TINT_PALETTE="alpha:#002b36:#839496"
+        _tint_load_palette_arrays
+        _TINT_PICKER_PREVIEWED=1
+        _TINT_PICKER_ORIGINAL_THEME_IDX=1
+        _TINT_PICKER_ORIGINAL_BG="#002b36"
+        _TINT_PICKER_ORIGINAL_FG=""
+        tint_set() { printf "tint_set"; for a; do printf "|%s" "$a"; done; echo; }
+        tint_reset() { echo "tint_reset"; }
+        _tint_restore_original_colors
+    ' -- "$DIR/tint"
+    [ "$status" -eq 0 ]
+    [ "$output" = "tint_set|#002b36:#839496" ]
+}
+
+@test "restore: no theme match, bg+fg queried → tint_set bg fg" {
+    run bash -c '
+        source "$1"
+        TINT_PALETTE="alpha:#002b36:#839496"
+        _tint_load_palette_arrays
+        _TINT_PICKER_PREVIEWED=1
+        _TINT_PICKER_ORIGINAL_THEME_IDX=0
+        _TINT_PICKER_ORIGINAL_BG="#aabbcc"
+        _TINT_PICKER_ORIGINAL_FG="#ffffff"
+        tint_set() { printf "tint_set"; for a; do printf "|%s" "$a"; done; echo; }
+        tint_reset() { echo "tint_reset"; }
+        _tint_restore_original_colors
+    ' -- "$DIR/tint"
+    [ "$status" -eq 0 ]
+    [ "$output" = "tint_set|#aabbcc|#ffffff" ]
+}
+
+@test "restore: no theme match, bg only → tint_set bg empty-fg" {
+    run bash -c '
+        source "$1"
+        TINT_PALETTE="alpha:#002b36:#839496"
+        _tint_load_palette_arrays
+        _TINT_PICKER_PREVIEWED=1
+        _TINT_PICKER_ORIGINAL_THEME_IDX=0
+        _TINT_PICKER_ORIGINAL_BG="#aabbcc"
+        _TINT_PICKER_ORIGINAL_FG=""
+        tint_set() { printf "tint_set"; for a; do printf "|%s" "$a"; done; echo; }
+        tint_reset() { echo "tint_reset"; }
+        _tint_restore_original_colors
+    ' -- "$DIR/tint"
+    [ "$status" -eq 0 ]
+    [ "$output" = "tint_set|#aabbcc|" ]
+}
+
+@test "restore: nothing queried → tint_reset" {
+    run bash -c '
+        source "$1"
+        TINT_PALETTE="alpha:#002b36:#839496"
+        _tint_load_palette_arrays
+        _TINT_PICKER_PREVIEWED=1
+        _TINT_PICKER_ORIGINAL_THEME_IDX=0
+        _TINT_PICKER_ORIGINAL_BG=""
+        _TINT_PICKER_ORIGINAL_FG=""
+        tint_set() { printf "tint_set"; for a; do printf "|%s" "$a"; done; echo; }
+        tint_reset() { echo "tint_reset"; }
+        _tint_restore_original_colors
+    ' -- "$DIR/tint"
+    [ "$status" -eq 0 ]
+    [ "$output" = "tint_reset" ]
+}
+
+@test "restore: no preview applied → no-op" {
+    run bash -c '
+        source "$1"
+        TINT_PALETTE="alpha:#002b36:#839496"
+        _tint_load_palette_arrays
+        _TINT_PICKER_PREVIEWED=0
+        _TINT_PICKER_ORIGINAL_THEME_IDX=1
+        _TINT_PICKER_ORIGINAL_BG="#002b36"
+        _TINT_PICKER_ORIGINAL_FG="#839496"
+        tint_set() { printf "tint_set"; for a; do printf "|%s" "$a"; done; echo; }
+        tint_reset() { echo "tint_reset"; }
+        _tint_restore_original_colors
+    ' -- "$DIR/tint"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+# =============================================================================
 # Picker: Navigation
 # =============================================================================
 
@@ -791,95 +1210,81 @@ _pick() {
 @test "picker: navigate down and select" {
     _pick down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#000000" ]  # black (first palette entry)
+    [ "$PICK_STDOUT" = "ayu" ]  # first palette entry
 }
 
 @test "picker: up wraps to last entry" {
     _pick up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#300a24" ]  # ubuntu (last palette entry)
+    [ "$PICK_STDOUT" = "tokyo" ]  # last palette entry
 }
 
 @test "picker: down then up returns to start" {
     _pick down up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#f0e1d2" ]  # idx 0 = original background (stubbed by pty_helper)
+    [ "$PICK_STDOUT" = "" ]  # idx 0 = unchanged (no theme name)
 }
 
 @test "picker: multiple navigations" {
     _pick down down down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#282a36" ]  # third palette entry
+    [ "$PICK_STDOUT" = "cobalt" ]  # third palette entry
 }
 
 @test "picker: j/k vim keys work" {
     _pick j j enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
+    [ "$PICK_STDOUT" = "catppuccin" ]  # second palette entry
 }
 
-@test "picker: j/k scroll past visible window" {
-    # Same as the arrow-key scroll tests but via vim bindings.
-    # 23 j's from idx 0 → idx 23 (navy), then k k k → idx 20 (kanagawa).
-    _pick j j j j j j j j j j \
-         j j j j j j j j j j \
-         j j j k k k enter
+@test "picker: j/k vim keys with wrapping" {
+    # 20 j's from idx 0: wraps at idx 19 → idx 0, then continues to idx 1.
+    # Then k back to idx 0.
+    _pick j j j j j j j j j j j j j j j j j j j j j k enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1f1f28" ]  # kanagawa (palette entry 20)
+    [ "$PICK_STDOUT" = "" ]  # idx 0 = unchanged (no theme name)
 }
 
 @test "picker: right/left arrows work as alternate bindings" {
     # Right/left are mapped to down/up for convenience.
     _pick right right enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
+    [ "$PICK_STDOUT" = "catppuccin" ]  # second palette entry
 }
 
 @test "picker: h/l vim keys work as alternate bindings" {
     # h/l are mapped to up/down for convenience.
     _pick l l enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1e1e1e" ]  # vscode (second palette entry)
+    [ "$PICK_STDOUT" = "catppuccin" ]  # second palette entry
 }
 
-@test "picker: scroll down past visible window" {
-    # Navigate past the visible window (22 rows on 24-line PTY) to force
-    # a scroll, exercising the full-redraw path in _tint_render_cursor_move.
-    # 23 downs from idx 0 → idx 23 = palette entry 23 (navy).
-    _pick down down down down down down down down down down \
-         down down down down down down down down down down \
-         down down down enter
+@test "picker: navigate to last theme" {
+    # 19 downs from idx 0 → idx 19 = tokyo (last palette entry).
+    _pick down down down down down down down down down down down down down down down down down down down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1b2838" ]  # navy (palette entry 23)
+    [ "$PICK_STDOUT" = "tokyo" ]  # palette entry 19
 }
 
-@test "picker: scroll up after scrolling down" {
-    # Scroll down to idx 23, then back up 3 to idx 20 = palette entry 20.
-    # Exercises the _TINT_PK_IDX < _TINT_PK_WIN_START branch in _tint_update_scroll_window.
-    _pick down down down down down down down down down down \
-         down down down down down down down down down down \
-         down down down up up up enter
+@test "picker: navigate down then back up" {
+    # Down to idx 4 (dracula), then up 2 to idx 2 (catppuccin).
+    _pick down down down down up up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1f1f28" ]  # kanagawa (palette entry 20)
+    [ "$PICK_STDOUT" = "catppuccin" ]  # palette entry 2
 }
 
 @test "picker: down past last entry wraps to start" {
-    # 30 items total (idx 0-29). 30 downs from idx 0 wraps back to idx 0.
-    # Window must jump from bottom back to top (max-distance shift).
-    _pick down down down down down down down down down down \
-         down down down down down down down down down down \
-         down down down down down down down down down down enter
+    # 20 items total (idx 0-19). 20 downs from idx 0 wraps back to idx 0.
+    _pick down down down down down down down down down down down down down down down down down down down down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#f0e1d2" ]  # idx 0 = unchanged (stubbed bg)
+    [ "$PICK_STDOUT" = "" ]  # idx 0 = unchanged (no theme name)
 }
 
-@test "picker: wrap to end then continue scrolling up" {
-    # Up from idx 0 wraps to idx 29 (ubuntu), then 2 more ups → idx 27.
-    # Verifies window state is correct after a max-distance jump, and
-    # subsequent navigation scrolls correctly from the new position.
+@test "picker: wrap to end then continue up" {
+    # Up from idx 0 wraps to idx 19 (tokyo), then 2 more ups → idx 17.
     _pick up up up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#1e2030" ]  # slate (palette entry 27)
+    [ "$PICK_STDOUT" = "solarized" ]  # palette entry 17
 }
 
 @test "picker: cancel with escape" {
@@ -896,17 +1301,17 @@ _pick() {
 
 @test "picker: teardown resets rendered rows for idempotent erase" {
     # Signal trap and picker loop both call _tint_restore_terminal. If
-    # _TINT_PK_RENDERED_ROWS isn't reset after erase, a second call
+    # _TINT_PICKER_RENDERED_ROWS isn't reset after erase, a second call
     # moves the cursor up again and clears lines above the picker.
     run bash -c "
         source '$DIR/tint'
-        _TINT_PK_RENDERED_ROWS=5
-        _TINT_PK_CURSOR_HIDDEN=0
-        _TINT_PK_EXIT_REASON=cancel
-        _TINT_PK_TRAPS_INSTALLED=0
-        _TINT_PK_SAVED_STTY=''
+        _TINT_PICKER_RENDERED_ROWS=5
+        _TINT_PICKER_CURSOR_HIDDEN=0
+        _TINT_PICKER_EXIT_REASON=cancel
+        _TINT_PICKER_TRAPS_INSTALLED=0
+        _TINT_PICKER_SAVED_STTY=''
         _tint_restore_terminal
-        echo \$_TINT_PK_RENDERED_ROWS
+        echo \$_TINT_PICKER_RENDERED_ROWS
     "
     [ "$status" -eq 0 ]
     [ "${lines[-1]}" = "0" ]
@@ -916,7 +1321,7 @@ _pick() {
     # Full-frame redraw per keypress can fill the PTY buffer when
     # the master side isn't draining continuously, blocking the child's
     # write and preventing it from reading further keys — deadlock.
-    # 15 down arrows exercises enough redraws to exceed a 4KB PTY buffer.
+    # Multiple wrapping navigations exercise enough redraws to test backpressure.
     run timeout 5 python3 "$DIR/test/pty_helper.py" \
         down down down down down down down down down down \
         down down down down down enter
@@ -929,7 +1334,7 @@ _pick() {
     # which kills the script. Render functions must use if/then instead.
     _pick down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "#000000" ]
+    [ "$PICK_STDOUT" = "ayu" ]
 }
 
 # =============================================================================
@@ -986,7 +1391,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; tint_get() { printf '%s' '#f0e1d2'; }; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
+    cmd = "source '" + tint_dir + "/tint'; _tint_query_terminal_bg() { printf '%s' '#f0e1d2'; }; _tint_query_terminal_fg() { printf '%s' '#1a1b26'; }; trap 'echo MYTRAP' EXIT; tint_pick >/dev/null; trap -p EXIT"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -1010,7 +1415,7 @@ PYEOF
 }
 
 @test "tint_pick in subshell does not corrupt stdout with EXIT trap" {
-    # hex=$(tint_pick) must not include caller EXIT trap output.
+    # result=$(tint_pick) must not include caller EXIT trap output.
     local result
     result=$(python3 - "$DIR" <<'PYEOF'
 import os, sys, time, select
@@ -1022,7 +1427,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; tint_get() { printf '%s' '#f0e1d2'; }; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    cmd = "source '" + tint_dir + "/tint'; _tint_query_terminal_bg() { printf '%s' '#f0e1d2'; }; _tint_query_terminal_fg() { printf '%s' '#1a1b26'; }; trap 'echo LEAKED' EXIT; result=$(tint_pick); echo RESULT:$result"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -1043,22 +1448,22 @@ else:
     print(out.decode('utf-8', 'replace'))
 PYEOF
 )
-    # HEX value should be a clean 6-digit hex, not contaminated with trap output.
+    # RESULT value should be a clean theme name, not contaminated with trap output.
     # "LEAKED" will appear later (from the parent's EXIT trap), which is fine —
-    # it just must not be part of the hex= capture.
+    # it just must not be part of the result= capture.
     # Strip control characters (PTY adds \r, escape sequences) before matching.
     local clean
-    clean=$(printf '%s' "$result" | sed 's/\x1b\[[^m]*m//g; s/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\r//g')
-    [[ "$clean" =~ HEX:#[0-9a-fA-F]{6} ]]
-    # Verify "LEAKED" is not embedded in the HEX value
-    [[ ! "$clean" =~ HEX:#[0-9a-fA-F]{6}LEAKED ]]
+    clean=$(printf '%s' "$result" | sed $'s/\x1b\\][^\x1b\x07]*\\(\x1b\\\\\\|\x07\\)//g; s/\x1b\\[[0-9;]*[A-Za-z]//g; s/\r//g')
+    [[ "$clean" =~ RESULT:ayu ]]
+    # Verify "LEAKED" is not embedded in the result capture
+    [[ ! "$clean" =~ RESULT:ayuLEAKED ]]
 }
 
 @test "tint_pick subshell stdout clean when BASHPID unset (Bash 3.2 compat)" {
     # BASHPID doesn't exist on Bash 3.2, so ${BASHPID:-$$} always equals $$
     # even inside command substitution. Without a working subshell check,
-    # hex=$(tint_pick) would save/restore the EXIT trap inside the subshell,
-    # leaking trap output into the captured hex value. BASH_SUBSHELL (Bash 3.0+)
+    # result=$(tint_pick) would save/restore the EXIT trap inside the subshell,
+    # leaking trap output into the captured value. BASH_SUBSHELL (Bash 3.0+)
     # correctly distinguishes subshells from direct calls.
     local result
     result=$(python3 - "$DIR" <<'PYEOF'
@@ -1071,7 +1476,7 @@ if pid == 0:
     sp = os.ttyname(slave); c = os.open(sp, os.O_RDWR); os.close(c)
     os.dup2(slave, 0); os.dup2(slave, 1); os.dup2(slave, 2)
     if slave > 2: os.close(slave)
-    cmd = "source '" + tint_dir + "/tint'; tint_get() { printf '%s' '#f0e1d2'; }; unset BASHPID; trap 'echo LEAKED' EXIT; hex=$(tint_pick); echo HEX:$hex"
+    cmd = "source '" + tint_dir + "/tint'; _tint_query_terminal_bg() { printf '%s' '#f0e1d2'; }; _tint_query_terminal_fg() { printf '%s' '#1a1b26'; }; unset BASHPID; trap 'echo LEAKED' EXIT; result=$(tint_pick); echo RESULT:$result"
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
@@ -1093,10 +1498,10 @@ else:
 PYEOF
 )
     local clean
-    clean=$(printf '%s' "$result" | sed 's/\x1b\[[^m]*m//g; s/\x1b\[[^a-zA-Z]*[a-zA-Z]//g; s/\r//g')
-    [[ "$clean" =~ HEX:#[0-9a-fA-F]{6} ]]
-    # LEAKED must not be embedded in the hex capture
-    [[ ! "$clean" =~ HEX:#[0-9a-fA-F]{6}LEAKED ]]
+    clean=$(printf '%s' "$result" | sed $'s/\x1b\\][^\x1b\x07]*\\(\x1b\\\\\\|\x07\\)//g; s/\x1b\\[[0-9;]*[A-Za-z]//g; s/\r//g')
+    [[ "$clean" =~ RESULT:ayu ]]
+    # LEAKED must not be embedded in the result capture
+    [[ ! "$clean" =~ RESULT:ayuLEAKED ]]
 }
 
 # =============================================================================
@@ -1357,7 +1762,7 @@ STUB
     [[ "$output" =~ "NO_CALL" ]]
 }
 
-@test "color cache prevents redundant calls" {
+@test "theme cache prevents redundant calls" {
     local tmpdir
     tmpdir=$(mktemp -d)
     echo "solarized" > "$tmpdir/.tint"

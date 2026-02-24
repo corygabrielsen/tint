@@ -18,7 +18,7 @@ import shlex
 import sys
 import time
 
-# Sentinel value for tint_get stub — must not appear in the palette.
+# Sentinel value for _tint_query_terminal_bg stub — must not appear in the palette.
 STUB_BG = "#f0e1d2"
 
 KEY_MAP = {
@@ -79,7 +79,8 @@ def main():
         os.execvp("bash", [
             "bash", "-c",
             f"source {shlex.quote(tint_path)};"
-            f" tint_get() {{ printf '%s' '{STUB_BG}'; }};"
+            f" _tint_query_terminal_bg() {{ printf '%s' '{STUB_BG}'; }};"
+            f" _tint_query_terminal_fg() {{ printf '%s' '#1a1b26'; }};"
             # EXIT trap checks stty echo state after tint_pick returns.
             # Runs regardless of exit code, so set -e cancels still report.
             f" trap '"
@@ -152,35 +153,29 @@ def main():
         # return 0. It will be after the final \n that the picker prints.
         raw = output.decode("utf-8", errors="replace")
 
-        # Extract the hex color from the raw output.
+        # Extract the theme name from the raw output.
         # The picker outputs ANSI rendering to /dev/tty and the result via
-        # printf '%s'. Look for #XXXXXX pattern in the output.
+        # printf '%s'. Both go to the same PTY fd, so we parse by position.
         import re
-        hex_match = re.findall(r"#[0-9a-fA-F]{6}", raw)
 
-        # The selected color is the LAST hex value printed (the printf '%s'
-        # output comes after all the rendering). But rendering also contains
-        # hex values in the display. We need a smarter approach.
-        #
-        # tint_pick outputs the selected hex via printf '%s' on stdout.
-        # The render function outputs to /dev/tty. In a PTY, both go to the
-        # same fd. But the selected hex is printed AFTER the final newline
-        # that the picker prints before returning.
-        #
-        # Strategy: split on the last \n from the picker, the hex follows it.
-        # The picker does: printf '\n' >/dev/tty; then printf '%s' "$hex"
-        # So we look for the pattern after the last newline.
-
-        # Look for the hex after the last cursor-show sequence (\x1b[?25h)
-        # since _tint_restore_terminal shows the cursor right before the return.
-        # Strip OSC sequences first (\x1b]...\x1b\\ or \x1b]...\x07) so we
-        # don't match hex values inside tint_set's terminal control output.
+        # Look for the theme name after the last cursor-show sequence
+        # (\x1b[?25h) since _tint_restore_terminal shows the cursor right
+        # before the return. Strip OSC sequences and ANSI escapes first so
+        # we don't match text inside terminal control output.
         show_cursor = "\x1b[?25h"
         cursor_pos = raw.rfind(show_cursor)
         if cursor_pos >= 0:
             after_cursor = raw[cursor_pos + len(show_cursor):]
             after_cursor = re.sub(r"\x1b\][^\x1b\x07]*(?:\x07|\x1b\\)", "", after_cursor)
-            result_match = re.search(r"#[0-9a-fA-F]{6}", after_cursor)
+            after_cursor = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", after_cursor)
+            # Strip EXIT trap output (STTY_ECHO:...) so it doesn't match
+            after_cursor = re.sub(r"STTY_ECHO:\w+", "", after_cursor)
+            # Match theme name.  Intentionally narrower than tint's palette
+            # validation regex ([a-zA-Z0-9][a-zA-Z0-9_-]*) — we restrict to
+            # lowercase start + 2-char minimum to avoid false matches against
+            # PTY control artifacts (digits, uppercase CSI remnants).  Safe
+            # because every built-in theme name is lowercase and multi-char.
+            result_match = re.search(r"[a-z][a-z0-9_-]+", after_cursor)
             stdout_result = result_match.group(0) if result_match else ""
         else:
             stdout_result = ""
