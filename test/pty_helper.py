@@ -12,10 +12,14 @@ Output:
   stdout:<captured output>
 """
 
+import fcntl
 import os
 import select
+import signal
 import shlex
+import struct
 import sys
+import termios
 import time
 
 # Sentinel value for _tint_query_terminal_bg stub — must not appear in the palette.
@@ -35,6 +39,15 @@ KEY_MAP = {
 # and distinguish a bare Escape from the start of an arrow sequence.
 KEY_DELAY = 0.05
 ESCAPE_DELAY = 0.15
+# Resize needs longer delay: SIGWINCH must be delivered, the picker loop
+# must wake from read (up to _tint_read_timeout=0.5s), and a full redraw
+# must complete.
+RESIZE_DELAY = 0.6
+
+def set_pty_size(fd, rows, cols):
+    """Set the PTY window size via ioctl(TIOCSWINSZ)."""
+    winsize = struct.pack("HHHH", rows, cols, 0, 0)
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
 
 def translate_key(name):
@@ -125,6 +138,13 @@ def main():
 
         # Send keys
         for key_name in keys:
+            if key_name.startswith("resize:"):
+                # resize:RxC — change PTY size and send SIGWINCH
+                rows, cols = key_name.split(":")[1].split("x")
+                set_pty_size(master_fd, int(rows), int(cols))
+                os.kill(pid, signal.SIGWINCH)
+                time.sleep(RESIZE_DELAY)
+                continue
             seq = translate_key(key_name)
             os.write(master_fd, seq.encode())
             # After escape, wait longer so read -t timeout fires

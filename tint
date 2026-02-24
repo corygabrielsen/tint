@@ -598,6 +598,11 @@ _tint_update_scroll_window() {
 
 # --- Picker: View ---
 
+# _tint_render_hint_line - Print the keyboard hint line above the picker
+_tint_render_hint_line() {
+    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+}
+
 # _tint_render_row <row_idx> <highlighted> - Append one formatted picker row to _tint_picker_buf
 #
 # Accessed via dynamic scoping from the caller. Each row has:
@@ -834,7 +839,7 @@ _tint_handle_resize() {
     _TINT_PICKER_RENDERED_ROWS=0
 
     # Reprint hint line and full frame
-    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    _tint_render_hint_line
     _tint_update_scroll_window
     _tint_render_all
 }
@@ -1153,7 +1158,7 @@ _tint_setup_terminal() {
         _tint_read_timeout=1
     fi
     if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
-    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    _tint_render_hint_line
     # Model: compute scroll window for initial cursor position
     _tint_update_scroll_window
     # View: apply preview color and render initial frame
