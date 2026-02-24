@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
+# Copyright (c) 2025 Cory Gabrielsen. MIT License.
 set -euo pipefail
 
-# Guards
-[ -n "${CI:-}" ] || { echo "::error::release.sh must be run in CI" >&2; exit 1; }
-[ -n "${HOMEBREW_TAP_TOKEN:-}" ] || { echo "::error::HOMEBREW_TAP_TOKEN is not set" >&2; exit 1; }
+# Default to /dev/null so the script works outside GitHub Actions (e.g. locally)
+GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
 
 # Extract version from tint script
 [ -f tint ] || { echo "::error::tint file not found" >&2; exit 1; }
@@ -11,9 +11,13 @@ set -euo pipefail
 version=$(grep '^TINT_VERSION=' tint | cut -d'"' -f2 | tr -d '[:space:]')
 tag="v$version"
 
+echo "version=$version" >> "$GITHUB_OUTPUT"
+echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
 # Skip if already released
 if git ls-remote --tags origin "$tag" | grep -q "refs/tags/$tag$"; then
     echo "$tag already exists, nothing to release"
+    echo "released=false" >> "$GITHUB_OUTPUT"
     exit 0
 fi
 
@@ -45,33 +49,4 @@ if [ -n "$tags" ]; then
     fi
 fi
 
-echo "Releasing $tag"
-
-# Create GitHub release with checksum
-# gh release create creates the tag via the GitHub API — if it fails, neither
-# the tag nor the release exist, so retries start clean (no orphaned tags).
-sha256sum tint > tint.sha256
-gh release create "$tag" \
-    --target "$(git rev-parse HEAD)" \
-    --title "$tag" \
-    --generate-notes \
-    tint tint.sha256
-
-# Update Homebrew tap
-# If this fails, the release is already published. Rerunning the workflow won't
-# retry because the tag-exists check exits early. Recover manually:
-#   gh workflow run update-formula.yml -R corygabrielsen/homebrew-tint \
-#     -f version=X.Y.Z -f sha256=CHECKSUM
-checksum=$(cut -d' ' -f1 tint.sha256)
-if GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/corygabrielsen/homebrew-tint/dispatches \
-    --method POST \
-    -f event_type=formula-update \
-    -f 'client_payload[version]'="$version" \
-    -f 'client_payload[sha256]'="$checksum"; then
-    echo "Dispatched formula update to homebrew-tint"
-else
-    echo "::error::Failed to dispatch formula update — run manually via workflow_dispatch in homebrew-tint" >&2
-    exit 1
-fi
-
-echo "Released $tag"
+echo "released=true" >> "$GITHUB_OUTPUT"
