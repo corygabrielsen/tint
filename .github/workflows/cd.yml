@@ -1,0 +1,35 @@
+name: Continuous Delivery
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: cd
+  cancel-in-progress: false
+
+jobs:
+  run-tests:
+    name: Run Tests
+    uses: ./.github/workflows/ci.yml
+
+  publish-release:
+    name: Publish Release
+    needs: run-tests
+    uses: ./.github/workflows/cd-publish-release.yml
+    permissions:
+      contents: write
+
+  # Intentionally decoupled from publish-release: if dispatch fails (bad token,
+  # API outage), the release is already published and this job can be rerun
+  # independently via workflow_dispatch — no need to re-publish.
+  dispatch-homebrew:
+    name: Dispatch Homebrew
+    needs: publish-release
+    if: needs.publish-release.result == 'success' && needs.publish-release.outputs.released == 'true'
+    uses: ./.github/workflows/cd-dispatch-homebrew.yml
+    with:
+      version: ${{ needs.publish-release.outputs.version }}
+      sha256: ${{ needs.publish-release.outputs.sha256 }}
+    secrets:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
