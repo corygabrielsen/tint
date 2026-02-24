@@ -713,6 +713,94 @@ INNEREOF
     [ "$_TINT_PICKER_SCROLLED" -eq 0 ]
 }
 
+# Helper: set up state for _tint_handle_resize tests.
+# Stubs terminal I/O functions (erase, render, height) so the model logic
+# can be tested without a PTY.
+_setup_resize() {
+    source "$DIR/tint"
+    # Stub I/O: erase, render, hint, height query, preview
+    # shellcheck disable=SC2317
+    _tint_erase_picker() { :; }
+    # shellcheck disable=SC2317
+    _tint_render_hint_line() { :; }
+    # shellcheck disable=SC2317
+    _tint_render_all() { :; }
+    # shellcheck disable=SC2317
+    _tint_apply_preview_color() { :; }
+    _tint_resize_height=24
+    # shellcheck disable=SC2317
+    _tint_get_terminal_height() { echo "$_tint_resize_height"; }
+    # Palette arrays (need real entries for render/scroll to reference)
+    _tint_themes_name=(unchanged a b c d e f g h i j k l m n o p q r s)
+    _tint_themes_bg=(unused x x x x x x x x x x x x x x x x x x x)
+    _TINT_PICKER_TOTAL=20
+    _TINT_PICKER_RESIZED=0
+}
+
+@test "resize: recalculates visible rows for larger terminal" {
+    _setup_resize
+    # Initial state: 10-row terminal, cursor at 5, window 0-7
+    _TINT_PICKER_VISIBLE=8
+    _TINT_PICKER_IDX=5
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=7
+    _TINT_PICKER_RENDERED_ROWS=8
+    # Grow terminal to 20 rows → visible = 20 - 2 = 18
+    _tint_resize_height=20
+    _tint_handle_resize
+    [ "$_TINT_PICKER_VISIBLE" -eq 18 ]
+    [ "$_TINT_PICKER_RESIZED" -eq 0 ]
+    # Cursor should still be visible in the new window
+    [ "$_TINT_PICKER_IDX" -eq 5 ]
+    [ "$_TINT_PICKER_WIN_START" -le 5 ]
+    [ "$_TINT_PICKER_WIN_END" -ge 5 ]
+}
+
+@test "resize: recalculates visible rows for smaller terminal" {
+    _setup_resize
+    # Initial state: 20-row terminal, cursor at 15, window 2-19
+    _TINT_PICKER_VISIBLE=18
+    _TINT_PICKER_IDX=15
+    _TINT_PICKER_WIN_START=2
+    _TINT_PICKER_WIN_END=19
+    _TINT_PICKER_RENDERED_ROWS=18
+    # Shrink terminal to 8 rows → visible = 8 - 2 = 6
+    _tint_resize_height=8
+    _tint_handle_resize
+    [ "$_TINT_PICKER_VISIBLE" -eq 6 ]
+    # Cursor at 15 should still be visible
+    [ "$_TINT_PICKER_WIN_START" -le 15 ]
+    [ "$_TINT_PICKER_WIN_END" -ge 15 ]
+}
+
+@test "resize: clamps visible to total when terminal is huge" {
+    _setup_resize
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_IDX=5
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=9
+    _TINT_PICKER_RENDERED_ROWS=10
+    # Terminal has 100 rows → visible would be 98, but total is only 20
+    _tint_resize_height=100
+    _tint_handle_resize
+    [ "$_TINT_PICKER_VISIBLE" -eq 20 ]
+    [ "$_TINT_PICKER_WIN_START" -eq 0 ]
+    [ "$_TINT_PICKER_WIN_END" -eq 19 ]
+}
+
+@test "resize: clamps visible to 1 for tiny terminal" {
+    _setup_resize
+    _TINT_PICKER_VISIBLE=10
+    _TINT_PICKER_IDX=5
+    _TINT_PICKER_WIN_START=0
+    _TINT_PICKER_WIN_END=9
+    _TINT_PICKER_RENDERED_ROWS=10
+    # Terminal has 2 rows → visible = 2 - 2 = 0, clamped to 1
+    _tint_resize_height=2
+    _tint_handle_resize
+    [ "$_TINT_PICKER_VISIBLE" -eq 1 ]
+}
+
 # Helper: set up minimal state for _tint_render_row tests
 _setup_render_row() {
     source "$DIR/tint"
@@ -1327,6 +1415,18 @@ _pick() {
         down down down down down enter
     [ "$status" -eq 0 ]
     [[ "$output" == *"exit:0"* ]]
+}
+
+@test "picker: SIGWINCH triggers redraw and picker remains functional" {
+    # Resize the PTY mid-session (10 rows → triggers recalculation of
+    # _TINT_PICKER_VISIBLE), then navigate and select to verify the picker
+    # survived the signal and redrew correctly.
+    run timeout 10 python3 "$DIR/test/pty_helper.py" \
+        down resize:10x80 down enter
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"exit:0"* ]]
+    # down + down = idx 2 (catppuccin, the second theme)
+    [[ "$output" == *"stdout:catppuccin"* ]]
 }
 
 @test "picker: set -e does not kill script during navigation" {
