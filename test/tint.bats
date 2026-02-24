@@ -4,12 +4,31 @@
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
     PATH="$DIR:$PATH"
-
+    _setup_picker_constants
 }
 
 # Helper to source the library within a test (BATS runs tests in subshells)
 _load_tint() {
     source "$DIR/tint"
+}
+
+# Derive palette constants so picker tests don't hardcode theme names or counts.
+# Only the "palette has expected themes" snapshot test should need updating when
+# themes are added, removed, or reordered.
+_setup_picker_constants() {
+    source "$DIR/tint"
+    local count
+    count=$(_tint_palette_count)
+
+    THEME_FIRST=$(_tint_palette_get 1 | cut -d: -f1)
+    THEME_SECOND=$(_tint_palette_get 2 | cut -d: -f1)
+    THEME_THIRD=$(_tint_palette_get 3 | cut -d: -f1)
+    THEME_LAST=$(_tint_palette_get "$count" | cut -d: -f1)
+    THEME_SECOND_LAST=$(_tint_palette_get $((count - 1)) | cut -d: -f1)
+    THEME_THIRD_LAST=$(_tint_palette_get $((count - 2)) | cut -d: -f1)
+
+    PALETTE_COUNT=$count
+    ITEM_COUNT=$((count + 1))  # themes + "unchanged" at idx 0
 }
 
 # =============================================================================
@@ -1284,6 +1303,17 @@ _setup_autodetect() {
 # Picker: Navigation
 # =============================================================================
 
+# Helper: generate N copies of a key name for _pick arguments
+# Usage: _repeat_keys <key> <count>
+# Stdout: space-separated key names (use with: _pick $(_repeat_keys down 5) enter)
+_repeat_keys() {
+    local key="$1" n="$2" i result=""
+    for ((i = 0; i < n; i++)); do
+        result+="$key "
+    done
+    printf '%s' "$result"
+}
+
 # Helper: run tint_pick in a PTY with simulated keystrokes
 # Usage: _pick <key> [<key> ...]
 # Sets: PICK_EXIT (exit code), PICK_STDOUT (captured output)
@@ -1298,13 +1328,13 @@ _pick() {
 @test "picker: navigate down and select" {
     _pick down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "ayu" ]  # first palette entry
+    [ "$PICK_STDOUT" = "$THEME_FIRST" ]
 }
 
 @test "picker: up wraps to last entry" {
     _pick up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "tokyo" ]  # last palette entry
+    [ "$PICK_STDOUT" = "$THEME_LAST" ]
 }
 
 @test "picker: down then up returns to start" {
@@ -1316,19 +1346,20 @@ _pick() {
 @test "picker: multiple navigations" {
     _pick down down down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "cobalt" ]  # third palette entry
+    [ "$PICK_STDOUT" = "$THEME_THIRD" ]
 }
 
 @test "picker: j/k vim keys work" {
     _pick j j enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "catppuccin" ]  # second palette entry
+    [ "$PICK_STDOUT" = "$THEME_SECOND" ]
 }
 
 @test "picker: j/k vim keys with wrapping" {
-    # 20 j's from idx 0: wraps at idx 19 → idx 0, then continues to idx 1.
+    # ITEM_COUNT j's from idx 0 wraps back to idx 0, one more to idx 1.
     # Then k back to idx 0.
-    _pick j j j j j j j j j j j j j j j j j j j j j k enter
+    # shellcheck disable=SC2046
+    _pick $(_repeat_keys j $((ITEM_COUNT + 1))) k enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "" ]  # idx 0 = unchanged (no theme name)
 }
@@ -1337,42 +1368,44 @@ _pick() {
     # Right/left are mapped to down/up for convenience.
     _pick right right enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "catppuccin" ]  # second palette entry
+    [ "$PICK_STDOUT" = "$THEME_SECOND" ]
 }
 
 @test "picker: h/l vim keys work as alternate bindings" {
     # h/l are mapped to up/down for convenience.
     _pick l l enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "catppuccin" ]  # second palette entry
+    [ "$PICK_STDOUT" = "$THEME_SECOND" ]
 }
 
 @test "picker: navigate to last theme" {
-    # 19 downs from idx 0 → idx 19 = tokyo (last palette entry).
-    _pick down down down down down down down down down down down down down down down down down down down enter
+    # PALETTE_COUNT downs from idx 0 → last palette entry.
+    # shellcheck disable=SC2046
+    _pick $(_repeat_keys down "$PALETTE_COUNT") enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "tokyo" ]  # palette entry 19
+    [ "$PICK_STDOUT" = "$THEME_LAST" ]
 }
 
 @test "picker: navigate down then back up" {
-    # Down to idx 4 (dracula), then up 2 to idx 2 (catppuccin).
+    # Down 4 then up 2 → idx 2 (second theme).
     _pick down down down down up up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "catppuccin" ]  # palette entry 2
+    [ "$PICK_STDOUT" = "$THEME_SECOND" ]
 }
 
 @test "picker: down past last entry wraps to start" {
-    # 20 items total (idx 0-19). 20 downs from idx 0 wraps back to idx 0.
-    _pick down down down down down down down down down down down down down down down down down down down down enter
+    # ITEM_COUNT downs from idx 0 wraps back to idx 0.
+    # shellcheck disable=SC2046
+    _pick $(_repeat_keys down "$ITEM_COUNT") enter
     [ "$PICK_EXIT" -eq 0 ]
     [ "$PICK_STDOUT" = "" ]  # idx 0 = unchanged (no theme name)
 }
 
 @test "picker: wrap to end then continue up" {
-    # Up from idx 0 wraps to idx 19 (tokyo), then 2 more ups → idx 17.
+    # Up from idx 0 wraps to last, then 2 more ups → third from last.
     _pick up up up enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "solarized" ]  # palette entry 17
+    [ "$PICK_STDOUT" = "$THEME_THIRD_LAST" ]
 }
 
 @test "picker: cancel with escape" {
@@ -1425,8 +1458,8 @@ _pick() {
         down resize:10x80 down enter
     [ "$status" -eq 0 ]
     [[ "$output" == *"exit:0"* ]]
-    # down + down = idx 2 (catppuccin, the second theme)
-    [[ "$output" == *"stdout:catppuccin"* ]]
+    # down + down = idx 2 (second theme)
+    [[ "$output" == *"stdout:${THEME_SECOND}"* ]]
 }
 
 @test "picker: set -e does not kill script during navigation" {
@@ -1434,7 +1467,7 @@ _pick() {
     # which kills the script. Render functions must use if/then instead.
     _pick down enter
     [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "ayu" ]
+    [ "$PICK_STDOUT" = "$THEME_FIRST" ]
 }
 
 # =============================================================================
@@ -1554,9 +1587,9 @@ PYEOF
     # Strip control characters (PTY adds \r, escape sequences) before matching.
     local clean
     clean=$(printf '%s' "$result" | sed $'s/\x1b\\][^\x1b\x07]*\\(\x1b\\\\\\|\x07\\)//g; s/\x1b\\[[0-9;]*[A-Za-z]//g; s/\r//g')
-    [[ "$clean" =~ RESULT:ayu ]]
+    [[ "$clean" =~ RESULT:${THEME_FIRST} ]]
     # Verify "LEAKED" is not embedded in the result capture
-    [[ ! "$clean" =~ RESULT:ayuLEAKED ]]
+    [[ ! "$clean" =~ RESULT:${THEME_FIRST}LEAKED ]]
 }
 
 @test "tint_pick subshell stdout clean when BASHPID unset (Bash 3.2 compat)" {
@@ -1599,9 +1632,9 @@ PYEOF
 )
     local clean
     clean=$(printf '%s' "$result" | sed $'s/\x1b\\][^\x1b\x07]*\\(\x1b\\\\\\|\x07\\)//g; s/\x1b\\[[0-9;]*[A-Za-z]//g; s/\r//g')
-    [[ "$clean" =~ RESULT:ayu ]]
+    [[ "$clean" =~ RESULT:${THEME_FIRST} ]]
     # LEAKED must not be embedded in the result capture
-    [[ ! "$clean" =~ RESULT:ayuLEAKED ]]
+    [[ ! "$clean" =~ RESULT:${THEME_FIRST}LEAKED ]]
 }
 
 # =============================================================================
