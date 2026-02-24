@@ -393,6 +393,7 @@ _tint_fg_for_bg() {
 #   _TINT_PICKER_KEY                 str   last keypress    read_key
 #   _TINT_PICKER_EXIT_REASON         str   exit cause       install_signal_traps, accept_selection, picker_loop
 #   _TINT_PICKER_SCROLLED            int   window shifted   init_picker, update_scroll_window
+#   _TINT_PICKER_RESIZED             int   resize pending   install_signal_traps, handle_resize
 #   _TINT_PICKER_WIN_START           int   top visible idx  init_picker, update_scroll_window
 #   _TINT_PICKER_WIN_END             int   bot visible idx  init_picker, update_scroll_window
 #
@@ -535,7 +536,7 @@ _tint_restore_terminal() {
         _tint_restore_original_colors
     fi
     if [ "${_TINT_PICKER_TRAPS_INSTALLED:-0}" -eq 1 ]; then
-        trap - EXIT INT TERM
+        trap - EXIT INT TERM WINCH
         eval "${_tint_saved_traps:-}"
         eval "${_tint_saved_exit:-}"
         _TINT_PICKER_TRAPS_INSTALLED=0
@@ -809,6 +810,35 @@ _tint_render_cursor_move() {
     fi
 }
 
+# _tint_handle_resize - Recalculate layout and redraw after terminal resize
+#
+# Called from the picker loop when SIGWINCH sets _TINT_PICKER_RESIZED.
+# Erases the current picker, recalculates the visible window size,
+# reprints the hint line, and does a full redraw.
+#
+# Sets: _TINT_PICKER_VISIBLE, _TINT_PICKER_RESIZED
+_tint_handle_resize() {
+    _TINT_PICKER_RESIZED=0
+
+    _tint_erase_picker
+
+    # Recalculate visible rows from new terminal height
+    local term_lines
+    term_lines=$(_tint_get_terminal_height)
+    _TINT_PICKER_VISIBLE=$(( term_lines - 2 ))
+    if [ "$_TINT_PICKER_VISIBLE" -gt "$_TINT_PICKER_TOTAL" ]; then _TINT_PICKER_VISIBLE=$_TINT_PICKER_TOTAL; fi
+    if [ "$_TINT_PICKER_VISIBLE" -lt 1 ]; then _TINT_PICKER_VISIBLE=1; fi
+
+    # Reset scroll window state to trigger re-centering around current cursor
+    _TINT_PICKER_WIN_END=0
+    _TINT_PICKER_RENDERED_ROWS=0
+
+    # Reprint hint line and full frame
+    printf '\e[2m  \xe2\x86\x91/\xe2\x86\x93 Navigate   Enter: Select   Esc: Cancel\e[0m\n' >/dev/tty
+    _tint_update_scroll_window
+    _tint_render_all
+}
+
 # --- Picker: Input ---
 
 # _tint_read_key - Read one logical keypress
@@ -1058,10 +1088,10 @@ _tint_find_default_index() {
 # for macOS Bash 3.2 compatibility.
 #
 # Sets: _tint_saved_traps, _tint_saved_exit, _TINT_PICKER_INTERRUPTED,
-#   _TINT_PICKER_CURSOR_HIDDEN, _TINT_PICKER_EXIT_REASON, _TINT_PICKER_KEY,
-#   _TINT_PICKER_SAVED_STTY, _TINT_PICKER_TRAPS_INSTALLED
+#   _TINT_PICKER_RESIZED, _TINT_PICKER_CURSOR_HIDDEN, _TINT_PICKER_EXIT_REASON,
+#   _TINT_PICKER_KEY, _TINT_PICKER_SAVED_STTY, _TINT_PICKER_TRAPS_INSTALLED
 _tint_install_signal_traps() {
-    _tint_saved_traps=$(trap -p INT TERM 2>/dev/null || true)
+    _tint_saved_traps=$(trap -p INT TERM WINCH 2>/dev/null || true)
     # shellcheck disable=SC3028
     if [ "${BASH_SUBSHELL:-0}" -eq 0 ]; then
         _tint_saved_exit=$(trap -p EXIT 2>/dev/null || true)
@@ -1072,6 +1102,7 @@ _tint_install_signal_traps() {
     # Flag-based signal handling avoids killing the parent shell when
     # sourced as a library. The read loop checks _TINT_PICKER_INTERRUPTED.
     _TINT_PICKER_INTERRUPTED=0
+    _TINT_PICKER_RESIZED=0
     _TINT_PICKER_CURSOR_HIDDEN=0
     _TINT_PICKER_EXIT_REASON=""
     _TINT_PICKER_KEY=""
@@ -1084,6 +1115,7 @@ _tint_install_signal_traps() {
     # 130 = 128+SIGINT, 143 = 128+SIGTERM (standard shell exit codes)
     trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PICKER_INTERRUPTED=130' INT
     trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PICKER_INTERRUPTED=143' TERM
+    trap '_TINT_PICKER_RESIZED=1' WINCH
     _TINT_PICKER_TRAPS_INSTALLED=1
 }
 
@@ -1226,10 +1258,12 @@ _tint_init_picker() {
 _tint_run_picker_loop() {
     while true; do
         if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
+        if [ "$_TINT_PICKER_RESIZED" -eq 1 ]; then _tint_handle_resize; fi
         # Timeout ensures signal flag (_TINT_PICKER_INTERRUPTED) gets checked even
         # when bash restarts read after a caught signal (SA_RESTART behavior).
         _tint_read_key || { _TINT_PICKER_EXIT_REASON=cancel; _tint_restore_terminal; return 1; }
         if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
+        if [ "$_TINT_PICKER_RESIZED" -eq 1 ]; then _tint_handle_resize; fi
         case "$_TINT_PICKER_KEY" in
             up|down)
                 # Model
