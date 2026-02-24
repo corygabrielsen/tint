@@ -2,11 +2,15 @@
 
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
-    export RELEASE_SCRIPT="$DIR/scripts/release.sh"
+    export CHECK_SCRIPT="$DIR/scripts/check-version.sh"
 
     # Create sandbox
     export SANDBOX="$BATS_TEST_TMPDIR"
     mkdir -p "$SANDBOX/bin"
+
+    # GITHUB_OUTPUT collects step outputs
+    export GITHUB_OUTPUT="$SANDBOX/github-output"
+    echo -n "" > "$GITHUB_OUTPUT"
 
     # Fake tint file (default version, tests can override)
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
@@ -19,15 +23,12 @@ setup() {
 
     cd "$SANDBOX" || return
     export PATH="$SANDBOX/bin:$PATH"
-    export CI=true
-    export HOMEBREW_TAP_TOKEN=fake-token
 }
 
 _create_stubs() {
     # git stub
     cat > "$SANDBOX/bin/git" << 'STUB'
 #!/usr/bin/env bash
-echo "git $*" >> "$SANDBOX/calls.log"
 case "$1" in
     ls-remote)
         cat "$SANDBOX/git-ls-remote.out" 2>/dev/null
@@ -44,13 +45,12 @@ esac
 STUB
     chmod +x "$SANDBOX/bin/git"
 
-    # npx stub — handles the three calling patterns release.sh uses:
+    # npx stub — handles the three calling patterns check-version.sh uses:
     #   1. npx semver@7 [--] <ver>            — single version validation
     #   2. npx semver@7 -p <ver> -r "<range>" — exit 0 if ver matches range
     #   3. npx semver@7 [--] <versions...>    — filter valid semver, sort, print
     cat > "$SANDBOX/bin/npx" << 'STUB'
 #!/usr/bin/env bash
-echo "npx $*" >> "$SANDBOX/calls.log"
 shift  # drop "--yes"
 shift  # drop "semver@7"
 if [ "${1:-}" = "--" ]; then shift; fi
@@ -109,114 +109,119 @@ fi
 printf '%s\n' "${results[@]}" | sort -t. -k1,1n -k2,2n -k3,3n
 STUB
     chmod +x "$SANDBOX/bin/npx"
-
-    # gh stub
-    cat > "$SANDBOX/bin/gh" << 'STUB'
-#!/usr/bin/env bash
-echo "gh $*" >> "$SANDBOX/calls.log"
-STUB
-    chmod +x "$SANDBOX/bin/gh"
-
-    # sha256sum stub
-    cat > "$SANDBOX/bin/sha256sum" << 'STUB'
-#!/usr/bin/env bash
-echo "fakechecksum  $1"
-STUB
-    chmod +x "$SANDBOX/bin/sha256sum"
-}
-
-# =============================================================================
-# CI Guard
-# =============================================================================
-
-@test "release: exits 1 outside CI" {
-    unset CI
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"must be run in CI"* ]]
 }
 
 # =============================================================================
 # Version Extraction
 # =============================================================================
 
-@test "release: missing tint file exits 1 with clear error" {
+@test "check-version: missing tint file exits 1 with clear error" {
     rm "$SANDBOX/tint"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"tint file not found"* ]]
 }
 
-@test "release: multiple TINT_VERSION lines exits 1 with clear error" {
-    printf 'TINT_VERSION="0.2.0"\nTINT_VERSION="0.3.0"\n' > "$SANDBOX/tint"
+@test "check-version: zero TINT_VERSION lines exits 1 with clear error" {
+    echo 'echo "hello world"' > "$SANDBOX/tint"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"exactly one TINT_VERSION"* ]]
 }
 
-@test "release: whitespace in version is trimmed" {
+@test "check-version: multiple TINT_VERSION lines exits 1 with clear error" {
+    printf 'TINT_VERSION="0.2.0"\nTINT_VERSION="0.3.0"\n' > "$SANDBOX/tint"
+
+    run "$CHECK_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"exactly one TINT_VERSION"* ]]
+}
+
+@test "check-version: whitespace in version is trimmed" {
     echo 'TINT_VERSION=" 0.3.0 "' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v0.3.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"version=0.3.0"* ]]
+    [[ "$output" == *"released=true"* ]]
+}
+
+@test "check-version: outputs version and tag" {
+    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
+    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
+
+    run "$CHECK_SCRIPT"
+    [ "$status" -eq 0 ]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"version=0.3.0"* ]]
+    [[ "$output" == *"tag=v0.3.0"* ]]
+    [[ "$output" == *"released=true"* ]]
 }
 
 # =============================================================================
 # Idempotency
 # =============================================================================
 
-@test "release: already-released tag exits 0 with message" {
+@test "check-version: already-released tag outputs released=false" {
     echo "abc1234 refs/tags/v0.3.0" > "$SANDBOX/git-ls-remote.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
     [[ "$output" == *"already exists"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=false"* ]]
 }
 
 # =============================================================================
 # Format Validation
 # =============================================================================
 
-@test "release: valid semver passes format validation" {
+@test "check-version: valid semver passes format validation" {
     echo 'TINT_VERSION="1.2.3"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v1.2.3"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: valid semver with prerelease passes format validation" {
+@test "check-version: valid semver with prerelease passes format validation" {
     echo 'TINT_VERSION="1.2.3-beta.1"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v1.2.3-beta.1"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: invalid semver (two-part) exits 1" {
+@test "check-version: invalid semver (two-part) exits 1" {
     echo 'TINT_VERSION="1.2"' > "$SANDBOX/tint"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"Invalid version"* ]]
 }
 
-@test "release: invalid semver (letters) exits 1" {
+@test "check-version: invalid semver (letters) exits 1" {
     echo 'TINT_VERSION="abc"' > "$SANDBOX/tint"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"Invalid version"* ]]
 }
 
-@test "release: npx failure during format validation exits 1" {
+@test "check-version: npx failure during format validation exits 1" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
 
     # Replace npx stub with one that crashes
@@ -227,7 +232,7 @@ exit 127
 STUB
     chmod +x "$SANDBOX/bin/npx"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"Invalid version"* ]]
 }
@@ -236,79 +241,91 @@ STUB
 # Ordering Validation
 # =============================================================================
 
-@test "release: version greater than latest proceeds" {
+@test "check-version: version greater than latest proceeds" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v0.3.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: version equal to latest exits 1" {
+@test "check-version: version equal to latest exits 1" {
     echo 'TINT_VERSION="0.2.0"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"not greater than"* ]]
 }
 
-@test "release: version less than latest exits 1" {
+@test "check-version: version less than latest exits 1" {
     echo 'TINT_VERSION="0.1.0"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"not greater than"* ]]
 }
 
-@test "release: first release (no tags) skips ordering check" {
+@test "check-version: first release (no tags) skips ordering check" {
     echo 'TINT_VERSION="0.1.0"' > "$SANDBOX/tint"
     echo -n "" > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v0.1.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: all-invalid tags skips ordering check" {
+@test "check-version: all-invalid tags skips ordering check" {
     echo 'TINT_VERSION="0.1.0"' > "$SANDBOX/tint"
     printf 'vnext\nvlatest\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v0.1.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: mixed valid/invalid tags uses valid ones only" {
+@test "check-version: mixed valid/invalid tags uses valid ones only" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
     printf 'vnext\nv0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v0.3.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: dash-prefixed tags are not parsed as CLI flags" {
+@test "check-version: dash-prefixed tags are not parsed as CLI flags" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
     printf 'v-r\nv0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v0.3.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: prerelease version greater than stable passes" {
+@test "check-version: prerelease version greater than stable passes" {
     echo 'TINT_VERSION="1.0.0"' > "$SANDBOX/tint"
     printf 'v0.2.0-beta.1\n' > "$SANDBOX/git-tags.out"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Released v1.0.0"* ]]
+
+    run cat "$GITHUB_OUTPUT"
+    [[ "$output" == *"released=true"* ]]
 }
 
-@test "release: npx failure during ordering check exits 1" {
+@test "check-version: npx failure during ordering check exits 1" {
     echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
     printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
 
@@ -328,72 +345,7 @@ exit 1
 STUB
     chmod +x "$SANDBOX/bin/npx"
 
-    run "$RELEASE_SCRIPT"
+    run "$CHECK_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"produced no output"* ]]
-}
-
-# =============================================================================
-# Homebrew Dispatch
-# =============================================================================
-
-@test "release: missing HOMEBREW_TAP_TOKEN exits 1" {
-    unset HOMEBREW_TAP_TOKEN
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"HOMEBREW_TAP_TOKEN is not set"* ]]
-}
-
-@test "release: dispatches formula update to homebrew-tint" {
-    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
-    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Dispatched formula update to homebrew-tint"* ]]
-
-    run cat "$SANDBOX/calls.log"
-    [[ "$output" == *"gh api repos/corygabrielsen/homebrew-tint/dispatches"* ]]
-}
-
-@test "release: dispatch failure exits 1 with clear error" {
-    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
-    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
-
-    # gh stub that succeeds for release but fails for dispatch
-    cat > "$SANDBOX/bin/gh" << 'STUB'
-#!/usr/bin/env bash
-echo "gh $*" >> "$SANDBOX/calls.log"
-case "$1" in
-    api) exit 1 ;;
-esac
-STUB
-    chmod +x "$SANDBOX/bin/gh"
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"Failed to dispatch formula update"* ]]
-}
-
-# =============================================================================
-# Happy Path
-# =============================================================================
-
-@test "release: full flow creates release with --target" {
-    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
-    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
-
-    run "$RELEASE_SCRIPT"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Releasing v0.3.0"* ]]
-    [[ "$output" == *"Released v0.3.0"* ]]
-
-    # Verify gh release create is called with --target (tag created via API, not git)
-    run cat "$SANDBOX/calls.log"
-    [[ "$output" == *"gh release create v0.3.0 --target abc1234def5678"* ]]
-    # No local git tag or push
-    [[ "$output" != *"git tag v0.3.0"* ]]
-    [[ "$output" != *"git push origin v0.3.0"* ]]
-    [[ "$output" != *"git config"* ]]
 }

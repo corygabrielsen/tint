@@ -1,0 +1,62 @@
+name: "CD: Publish Release"
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        value: ${{ jobs.publish-release.outputs.version }}
+      sha256:
+        value: ${{ jobs.publish-release.outputs.sha256 }}
+      released:
+        value: ${{ jobs.publish-release.outputs.released }}
+  # workflow_dispatch enables manual recovery and independent testing;
+  # the normal path (cd.yml) gates on tests first.
+  workflow_dispatch: {}
+
+jobs:
+  publish-release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+      sha256: ${{ steps.release.outputs.sha256 }}
+      released: ${{ steps.check.outputs.released }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check version
+        id: check
+        run: scripts/check-version.sh
+
+      - name: Create release
+        id: release
+        if: steps.check.outputs.released == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.check.outputs.tag }}"
+          sha256sum tint > tint.sha256
+          echo "sha256=$(cut -d' ' -f1 tint.sha256)" >> "$GITHUB_OUTPUT"
+          gh release create "$tag" \
+            --target "${{ github.sha }}" \
+            --title "$tag" \
+            --generate-notes \
+            tint tint.sha256
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outcome }}" = "failure" ]; then
+            echo "### Version check failed" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.check.outputs.released }}" != "true" ]; then
+            echo "### ${{ steps.check.outputs.tag }} already exists — skipped" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "${{ steps.release.outcome }}" = "success" ]; then
+            echo "### Released ${{ steps.check.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Release of ${{ steps.check.outputs.tag }} failed" >> "$GITHUB_STEP_SUMMARY"
+          fi

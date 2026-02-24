@@ -1,0 +1,47 @@
+name: "CD: Dispatch Homebrew"
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      sha256:
+        type: string
+        required: true
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (e.g. 0.13.0)"
+        required: true
+      sha256:
+        description: "SHA-256 checksum of the tint binary"
+        required: true
+
+jobs:
+  dispatch-homebrew:
+    name: Dispatch Homebrew
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch formula update
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          gh api repos/corygabrielsen/homebrew-tint/dispatches \
+            --method POST \
+            -f event_type=formula-update \
+            -f 'client_payload[version]=${{ inputs.version }}' \
+            -f 'client_payload[sha256]=${{ inputs.sha256 }}'
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ steps.dispatch.outcome }}" = "success" ]; then
+            echo "### Dispatched homebrew-tint update for v${{ inputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Failed to dispatch homebrew-tint update for v${{ inputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+          fi

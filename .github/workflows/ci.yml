@@ -1,12 +1,13 @@
-name: CI
+name: Continuous Integration
 
 on:
-  push:
-    branches: [master]
+  workflow_call:
+  workflow_dispatch:
   pull_request:
 
 jobs:
-  test:
+  run-tests:
+    name: Run Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -19,3 +20,12 @@ jobs:
 
       - name: Run tests
         run: make test
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            echo "### Tests passed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### Tests failed" >> "$GITHUB_STEP_SUMMARY"
+          fi
