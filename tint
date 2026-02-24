@@ -47,7 +47,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.14.0"
+TINT_VERSION="0.15.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -67,7 +67,8 @@ cobalt:#132738:#ffffff:#000000:#ff0000:#38de21:#ffe50a:#1460d2:#ff005d:#00bbbb:#
 dracula:#282a36:#f8f8f2:#262626:#e64747:#42e66c:#e4f34a:#9b6bdf:#e356a7:#75d7ec:#f8f8f2:#7a7a7a:#ff5555:#50fa7b:#f1fa8c:#bd93f9:#ff79c6:#8be9fd:#f9f9fb
 everforest:#2d353b:#d3c6aa:#2e383c:#e67e80:#a7c080:#dbbc7f:#7fbbb3:#d699b6:#83c092:#d3c6aa:#5c6a72:#f85552:#8da101:#dfa000:#3a94c5:#df69ba:#35a77c:#dfddc8
 github:#101216:#8b949e:#000000:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#ffffff:#4d4d4d:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#ffffff
-gruvbox:#282828:#ebdbb2:#282828:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#a89984:#928374:#fb4934:#b8bb26:#fabd2f:#83a598:#d3869b:#8ec07c:#ebdbb2
+gruvbox-dark:#282828:#ebdbb2:#282828:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#a89984:#928374:#fb4934:#b8bb26:#fabd2f:#83a598:#d3869b:#8ec07c:#ebdbb2
+gruvbox-light:#fbf1c7:#3c3836:#fdf4c1:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#7c6f64:#928374:#9d0006:#79740e:#b57614:#076678:#8f3f71:#427b58:#3c3836
 horizon:#1c1e26:#fdf0ed:#16161c:#e95678:#29d398:#fab795:#26bbd9:#ee64ae:#59e3e3:#fadad1:#232530:#ec6a88:#3fdaa4:#fbc3a7:#3fc6de:#f075b7:#6be6e6:#fdf0ed
 kanagawa:#1f1f28:#dcd7ba:#090618:#c34043:#76946a:#c0a36e:#7e9cd8:#957fb8:#6a9589:#c8c093:#727169:#e82424:#98bb6c:#e6c384:#7fb4ca:#938aa9:#7aa89f:#dcd7ba
 material:#1e282c:#c3c7d1:#073641:#eb606b:#c3e88d:#f7eb95:#80cbc3:#ff2490:#aeddff:#ffffff:#002b36:#eb606b:#c3e88d:#f7eb95:#7dc6bf:#6c71c3:#34434d:#ffffff
@@ -77,7 +78,8 @@ nord:#2e3440:#d8dee9:#3b4252:#bf616a:#a3be8c:#ebcb8b:#81a1c1:#b48ead:#88c0d0:#e5
 onedark:#1e2127:#5c6370:#000000:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#abb2bf:#5c6370:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#fffefe
 palenight:#292d3e:#bfc7d5:#292d3e:#f07178:#c3e88d:#ffcb6b:#82aaff:#c792ea:#60adec:#abb2bf:#959dcb:#f07178:#c3e88d:#ff5572:#82aaff:#ffcb6b:#676e95:#fffefe
 rose-pine:#191724:#e0def4:#26233a:#eb6f92:#9ccfd8:#f6c177:#31748f:#c4a7e7:#ebbcba:#e0def4:#6e6a86:#eb6f92:#9ccfd8:#f6c177:#31748f:#c4a7e7:#ebbcba:#e0def4
-solarized:#002b36:#839496:#073642:#dc322f:#859900:#cf9a6b:#268bd2:#d33682:#2aa198:#eee8d5:#657b83:#cb4b16:#859900:#cf9a6b:#6c71c4:#d33682:#2aa198:#fdf6e3
+solarized-dark:#002b36:#839496:#073642:#dc322f:#859900:#cf9a6b:#268bd2:#d33682:#2aa198:#eee8d5:#657b83:#cb4b16:#859900:#cf9a6b:#6c71c4:#d33682:#2aa198:#fdf6e3
+solarized-light:#fdf6e3:#657b83:#002b36:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#073642:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3
 synthwave:#262335:#ffffff:#011627:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff:#575656:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff
 tango:#2e3436:#d3d7cf:#000000:#cc0000:#4e9a06:#c4a000:#3465a4:#75507b:#06989a:#d3d7cf:#555753:#ef2929:#8ae234:#fce94f:#739fcf:#ad7fa8:#34e2e2:#eeeeec
 tokyo:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5

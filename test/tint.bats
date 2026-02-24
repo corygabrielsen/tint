@@ -50,7 +50,7 @@ _setup_picker_constants() {
 @test "tint --list shows themes" {
     run tint --list
     [ "$status" -eq 0 ]
-    grep -q '^solarized$' <<<"$output"
+    grep -q '^solarized-dark$' <<<"$output"
     grep -q '^dracula$' <<<"$output"
 }
 
@@ -183,7 +183,7 @@ _setup_picker_constants() {
 echo "pre_source"
 . "$DIR/tint"
 echo "post_source"
-echo "lookup=\$(tint_lookup solarized)"
+echo "lookup=\$(tint_lookup solarized-dark)"
 INNEREOF
     chmod +x "$tmpdir/caller.sh"
     run "$tmpdir/caller.sh"
@@ -205,7 +205,7 @@ INNEREOF
 TINT_VERSION=foo
 echo "caller_only"
 . "$DIR/tint"
-echo "lookup=\$(tint_lookup solarized)"
+echo "lookup=\$(tint_lookup solarized-dark)"
 INNEREOF
     chmod +x "$tmpdir/caller.sh"
     run "$tmpdir/caller.sh" --version
@@ -251,7 +251,7 @@ INNEREOF
     # Source directly - sourcing via function scopes variables to that function
     source "$DIR/tint"
     local result
-    result=$(tint_lookup "solarized")
+    result=$(tint_lookup "solarized-dark")
     # Returns full theme string: #bg:#fg:#00:...:#15
     [[ "$result" == "#002b36:#839496:#073642:"* ]]
 }
@@ -377,10 +377,10 @@ INNEREOF
     [ "$result" = "#000000" ]
 }
 
-@test "_tint_fg_for_bg works with solarized dark" {
+@test "_tint_fg_for_bg works with solarized-dark" {
     source "$DIR/tint"
     local result
-    # solarized:#002b36 is dark → should return white
+    # solarized-dark:#002b36 is dark → should return white
     result=$(_tint_fg_for_bg "#002b36")
     [ "$result" = "#ffffff" ]
 }
@@ -437,7 +437,8 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "dracula:#282a36:" ]]
     [[ "$TINT_PALETTE" =~ "everforest:#2d353b:" ]]
     [[ "$TINT_PALETTE" =~ "github:#101216:" ]]
-    [[ "$TINT_PALETTE" =~ "gruvbox:#282828:" ]]
+    [[ "$TINT_PALETTE" =~ "gruvbox-dark:#282828:" ]]
+    [[ "$TINT_PALETTE" =~ "gruvbox-light:#fbf1c7:" ]]
     [[ "$TINT_PALETTE" =~ "horizon:#1c1e26:" ]]
     [[ "$TINT_PALETTE" =~ "kanagawa:#1f1f28:" ]]
     [[ "$TINT_PALETTE" =~ "material:#1e282c:" ]]
@@ -447,11 +448,12 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "onedark:#1e2127:" ]]
     [[ "$TINT_PALETTE" =~ "palenight:#292d3e:" ]]
     [[ "$TINT_PALETTE" =~ "rose-pine:#191724:" ]]
-    [[ "$TINT_PALETTE" =~ "solarized:#002b36:" ]]
+    [[ "$TINT_PALETTE" =~ "solarized-dark:#002b36:" ]]
+    [[ "$TINT_PALETTE" =~ "solarized-light:#fdf6e3:" ]]
     [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
     [[ "$TINT_PALETTE" =~ "tango:#2e3436:" ]]
     [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
-    [ "$(_tint_palette_count)" -eq 21 ]
+    [ "$(_tint_palette_count)" -eq 23 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
@@ -825,7 +827,7 @@ _setup_resize() {
 # Helper: set up minimal state for _tint_render_row tests
 _setup_render_row() {
     source "$DIR/tint"
-    _tint_themes_name=(unused "solarized")
+    _tint_themes_name=(unused "solarized-dark")
     _tint_themes_bg=(unused "#002b36")
     _tint_themes_bg_r=(0 0) _tint_themes_bg_g=(0 43) _tint_themes_bg_b=(0 54)
     _tint_picker_text_sgr=(30 97)
@@ -876,7 +878,7 @@ _setup_render_row() {
 @test "render: row includes theme name" {
     _setup_render_row
     _tint_render_row 1 0
-    [[ "$_tint_picker_buf" == *"solarized"* ]]
+    [[ "$_tint_picker_buf" == *"solarized-dark"* ]]
 }
 
 
@@ -1741,7 +1743,7 @@ PYEOF
 @test "hook reads .tint file" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    echo "solarized" > "$tmpdir/.tint"
+    echo "solarized-dark" > "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
 #!/bin/sh
@@ -1761,7 +1763,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "solarized" ]]
+    [[ "$output" =~ "solarized-dark" ]]
 }
 
 @test "walk-up finds parent .tint" {
@@ -1846,7 +1848,7 @@ STUB
 @test "unreadable .tint is skipped silently" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    echo "solarized" > "$tmpdir/.tint"
+    echo "solarized-dark" > "$tmpdir/.tint"
     chmod 000 "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
@@ -1900,7 +1902,7 @@ STUB
 @test "theme cache prevents redundant calls" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    echo "solarized" > "$tmpdir/.tint"
+    echo "solarized-dark" > "$tmpdir/.tint"
     mkdir -p "$tmpdir/sub1" "$tmpdir/sub2"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
@@ -1955,7 +1957,7 @@ STUB
 @test "hook strips inline comments" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    echo "solarized # my theme" > "$tmpdir/.tint"
+    echo "solarized-dark # my theme" > "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
 #!/bin/sh
@@ -1975,13 +1977,13 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "solarized" ]]
+    [[ "${lines[-1]}" = "solarized-dark" ]]
 }
 
 @test "hook skips full-line comments" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    printf '# Project X\n# Dark theme\nsolarized\n' > "$tmpdir/.tint"
+    printf '# Project X\n# Dark theme\nsolarized-dark\n' > "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
 #!/bin/sh
@@ -2001,7 +2003,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "solarized" ]]
+    [[ "${lines[-1]}" = "solarized-dark" ]]
 }
 
 @test "hook treats hex color as value not comment" {
@@ -2059,7 +2061,7 @@ STUB
 @test "hook ignores comment-only .tint file" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    printf '# TODO: pick a theme\n# maybe solarized?\n' > "$tmpdir/.tint"
+    printf '# TODO: pick a theme\n# maybe solarized-dark?\n' > "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
 #!/bin/sh
@@ -2124,7 +2126,7 @@ STUB
     local tmpdir nocolor
     tmpdir=$(mktemp -d)
     nocolor=$(mktemp -d)
-    echo "solarized" > "$tmpdir/.tint"
+    echo "solarized-dark" > "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
 #!/bin/sh
@@ -2166,7 +2168,7 @@ STUB
 @test "hook treats ambiguous #-prefixed text as comment" {
     local tmpdir
     tmpdir=$(mktemp -d)
-    printf '#dark theme\nsolarized\n' > "$tmpdir/.tint"
+    printf '#dark theme\nsolarized-dark\n' > "$tmpdir/.tint"
     mkdir -p "$tmpdir/bin"
     cat > "$tmpdir/bin/tint" <<'STUB'
 #!/bin/sh
@@ -2186,7 +2188,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "solarized" ]]
+    [[ "${lines[-1]}" = "solarized-dark" ]]
 }
 
 @test "hook survives set -e with empty .tint" {
@@ -2250,7 +2252,7 @@ STUB
 }
 
 @test "extra args still rejected for other commands" {
-    run tint solarized extra
+    run tint solarized-dark extra
     [ "$status" -eq 1 ]
     [[ "$output" =~ "unexpected argument" ]]
 }
