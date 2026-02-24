@@ -431,6 +431,7 @@ INNEREOF
     # Source directly - sourcing via function scopes the variable to that function
     source "$DIR/tint"
     [[ "$TINT_PALETTE" =~ "ayu:#0a0e14:" ]]
+    [[ "$TINT_PALETTE" =~ "campbell:#0c0c0c:" ]]
     [[ "$TINT_PALETTE" =~ "catppuccin:#1e1e2e:" ]]
     [[ "$TINT_PALETTE" =~ "cobalt:#132738:" ]]
     [[ "$TINT_PALETTE" =~ "dracula:#282a36:" ]]
@@ -450,7 +451,7 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
     [[ "$TINT_PALETTE" =~ "tango:#2e3436:" ]]
     [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
-    [ "$(_tint_palette_count)" -eq 20 ]
+    [ "$(_tint_palette_count)" -eq 21 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
