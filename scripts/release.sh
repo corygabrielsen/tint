@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Guard: only run in CI
+# Guards
 [ -n "${CI:-}" ] || { echo "::error::release.sh must be run in CI" >&2; exit 1; }
+[ -n "${HOMEBREW_TAP_TOKEN:-}" ] || { echo "::error::HOMEBREW_TAP_TOKEN is not set" >&2; exit 1; }
 
 # Extract version from tint script
 [ -f tint ] || { echo "::error::tint file not found" >&2; exit 1; }
@@ -55,5 +56,22 @@ gh release create "$tag" \
     --title "$tag" \
     --generate-notes \
     tint tint.sha256
+
+# Update Homebrew tap
+# If this fails, the release is already published. Rerunning the workflow won't
+# retry because the tag-exists check exits early. Recover manually:
+#   gh workflow run update-formula.yml -R corygabrielsen/homebrew-tint \
+#     -f version=X.Y.Z -f sha256=CHECKSUM
+checksum=$(cut -d' ' -f1 tint.sha256)
+if GH_TOKEN="$HOMEBREW_TAP_TOKEN" gh api repos/corygabrielsen/homebrew-tint/dispatches \
+    --method POST \
+    -f event_type=formula-update \
+    -f 'client_payload[version]'="$version" \
+    -f 'client_payload[sha256]'="$checksum"; then
+    echo "Dispatched formula update to homebrew-tint"
+else
+    echo "::error::Failed to dispatch formula update — run manually via workflow_dispatch in homebrew-tint" >&2
+    exit 1
+fi
 
 echo "Released $tag"
