@@ -20,6 +20,7 @@ setup() {
     cd "$SANDBOX" || return
     export PATH="$SANDBOX/bin:$PATH"
     export CI=true
+    export HOMEBREW_TAP_TOKEN=fake-token
 }
 
 _create_stubs() {
@@ -330,6 +331,49 @@ STUB
     run "$RELEASE_SCRIPT"
     [ "$status" -eq 1 ]
     [[ "$output" == *"produced no output"* ]]
+}
+
+# =============================================================================
+# Homebrew Dispatch
+# =============================================================================
+
+@test "release: missing HOMEBREW_TAP_TOKEN exits 1" {
+    unset HOMEBREW_TAP_TOKEN
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"HOMEBREW_TAP_TOKEN is not set"* ]]
+}
+
+@test "release: dispatches formula update to homebrew-tint" {
+    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
+    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Dispatched formula update to homebrew-tint"* ]]
+
+    run cat "$SANDBOX/calls.log"
+    [[ "$output" == *"gh api repos/corygabrielsen/homebrew-tint/dispatches"* ]]
+}
+
+@test "release: dispatch failure exits 1 with clear error" {
+    echo 'TINT_VERSION="0.3.0"' > "$SANDBOX/tint"
+    printf 'v0.1.0\nv0.2.0\n' > "$SANDBOX/git-tags.out"
+
+    # gh stub that succeeds for release but fails for dispatch
+    cat > "$SANDBOX/bin/gh" << 'STUB'
+#!/usr/bin/env bash
+echo "gh $*" >> "$SANDBOX/calls.log"
+case "$1" in
+    api) exit 1 ;;
+esac
+STUB
+    chmod +x "$SANDBOX/bin/gh"
+
+    run "$RELEASE_SCRIPT"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"Failed to dispatch formula update"* ]]
 }
 
 # =============================================================================
