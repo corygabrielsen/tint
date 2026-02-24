@@ -1528,12 +1528,12 @@ if pid == 0:
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
-    time.sleep(0.3)
+    time.sleep(0.1)
     os.write(master, b'q')
     _, status = os.waitpid(pid, 0)
     out = b''
     while True:
-        r, _, _ = select.select([master], [], [], 0.1)
+        r, _, _ = select.select([master], [], [], 0.02)
         if not r: break
         try:
             c = os.read(master, 4096)
@@ -1564,14 +1564,14 @@ if pid == 0:
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
-    time.sleep(0.3)
+    time.sleep(0.1)
     os.write(master, b'\x1b[C')
-    time.sleep(0.05)
+    time.sleep(0.02)
     os.write(master, b'\r')
     _, status = os.waitpid(pid, 0)
     out = b''
     while True:
-        r, _, _ = select.select([master], [], [], 0.1)
+        r, _, _ = select.select([master], [], [], 0.02)
         if not r: break
         try:
             c = os.read(master, 4096)
@@ -1613,14 +1613,14 @@ if pid == 0:
     os.execvp('bash', ['bash', '-c', cmd])
 else:
     os.close(slave)
-    time.sleep(0.3)
+    time.sleep(0.1)
     os.write(master, b'\x1b[C')
-    time.sleep(0.05)
+    time.sleep(0.02)
     os.write(master, b'\r')
     _, status = os.waitpid(pid, 0)
     out = b''
     while True:
-        r, _, _ = select.select([master], [], [], 0.1)
+        r, _, _ = select.select([master], [], [], 0.02)
         if not r: break
         try:
             c = os.read(master, 4096)

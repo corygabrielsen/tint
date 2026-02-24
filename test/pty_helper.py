@@ -35,14 +35,18 @@ KEY_MAP = {
 }
 
 # Delay between keystrokes (seconds).
+# The picker's _tint_esc_timeout is 0.01s (10ms) on Bash >= 4, and 1s on
+# older Bash (< 4). A 20ms delay between keys stays well below the 10ms
+# timeout in the fast case and is trivially safe in the slow case, so the
+# read loop processes each key well within the effective timeout window.
+KEY_DELAY = 0.02
 # Escape key needs extra delay so bash's read -t timeout can fire
 # and distinguish a bare Escape from the start of an arrow sequence.
-KEY_DELAY = 0.05
-ESCAPE_DELAY = 0.15
+ESCAPE_DELAY = 0.05
 # Resize needs longer delay: SIGWINCH must be delivered, the picker loop
 # must wake from read (up to _tint_read_timeout=0.5s), and a full redraw
 # must complete.
-RESIZE_DELAY = 0.6
+RESIZE_DELAY = 0.3
 
 def set_pty_size(fd, rows, cols):
     """Set the PTY window size via ioctl(TIOCSWINSZ)."""
@@ -120,7 +124,7 @@ def main():
         def drain_output():
             while not drain_done.is_set():
                 try:
-                    ready, _, _ = select.select([master_fd], [], [], 0.05)
+                    ready, _, _ = select.select([master_fd], [], [], 0.01)
                     if ready:
                         chunk = os.read(master_fd, 65536)
                         if chunk:
@@ -133,8 +137,16 @@ def main():
         drain_thread = threading.Thread(target=drain_output, daemon=True)
         drain_thread.start()
 
-        # Wait for the picker to render initial state
-        time.sleep(0.3)
+        # Wait for the picker to render initial state.
+        # Poll for output rather than a fixed sleep — the picker writes
+        # escape sequences as soon as it renders.
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            if output_chunks:
+                break
+            time.sleep(0.01)
+        # Small settle time for the full frame to flush
+        time.sleep(0.03)
 
         # Send keys
         for key_name in keys:
@@ -159,7 +171,7 @@ def main():
         exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -os.WTERMSIG(status)
 
         # Let drain thread collect remaining output, then stop it
-        time.sleep(0.1)
+        time.sleep(0.02)
         drain_done.set()
         drain_thread.join(timeout=1.0)
 
