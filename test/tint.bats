@@ -448,8 +448,9 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "rose-pine:#191724:" ]]
     [[ "$TINT_PALETTE" =~ "solarized:#002b36:" ]]
     [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
+    [[ "$TINT_PALETTE" =~ "tango:#2e3436:" ]]
     [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
-    [ "$(_tint_palette_count)" -eq 19 ]
+    [ "$(_tint_palette_count)" -eq 20 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
