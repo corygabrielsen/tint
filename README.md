@@ -16,6 +16,14 @@ Terminal theme switcher with live preview. Each theme sets background, foregroun
 
 ## Install
 
+### Homebrew
+
+```bash
+brew install corygabrielsen/tint/tint
+```
+
+### Manual
+
 ```bash
 curl -fsSL https://github.com/corygabrielsen/tint/releases/latest/download/tint \
   -o ~/.local/bin/tint && chmod +x ~/.local/bin/tint
