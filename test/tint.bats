@@ -830,7 +830,7 @@ _setup_render_row() {
     _tint_themes_name=(unused "solarized-dark")
     _tint_themes_bg=(unused "#002b36")
     _tint_themes_bg_r=(0 0) _tint_themes_bg_g=(0 43) _tint_themes_bg_b=(0 54)
-    _tint_picker_text_sgr=(30 97)
+    _tint_themes_fg_r=(0 131) _tint_themes_fg_g=(0 148) _tint_themes_fg_b=(0 150)
     _TINT_PICKER_TOTAL=2
     _TINT_PICKER_DEFAULT=0
     _TINT_PICKER_ORIGINAL_BG="#f0e1d2"
@@ -885,6 +885,7 @@ _setup_render_row() {
 @test "render: highlighted row uses normal weight" {
     _setup_render_row
     _tint_render_row 1 1
+    [[ "$_tint_picker_buf" == *"38;2;"* ]]
     [[ "$_tint_picker_buf" == *"48;2;"* ]]
     [[ "$_tint_picker_buf" != *$'\e[2;'* ]]
 }
@@ -892,6 +893,7 @@ _setup_render_row() {
 @test "render: unhighlighted row uses dim" {
     _setup_render_row
     _tint_render_row 1 0
+    [[ "$_tint_picker_buf" == *"38;2;"* ]]
     [[ "$_tint_picker_buf" == *$'\e[2;'* ]]
 }
 
