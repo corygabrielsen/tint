@@ -425,7 +425,7 @@ _tint_fg_for_bg() {
 #   _tint_themes[i]           str   full theme value (#bg:#fg:#00:...:#15)
 #   _tint_themes_fg[i]        str   fg hex (#RRGGBB) — pre-lowercased from theme
 #   _tint_themes_bg_r/g/b[i]  int   bg RGB components (for ANSI 48;2;r;g;b)
-#   _tint_themes_fg_r[i]     int   fg red   (0–255, from theme fg hex)
+#   _tint_themes_fg_r/g/b[i]  int   fg RGB components (for ANSI 38;2;r;g;b)
 #
 #   Session context (locals in tint_pick, visible via dynamic scoping)
 #   Name                 Type  Description
@@ -618,7 +618,7 @@ _tint_render_hint_line() {
 #   _tint_themes_name[], _tint_themes_bg[], _tint_themes_bg_r/g/b[], _tint_themes_fg_r/g/b[]
 _tint_render_row() {
     local row_idx="$1" highlighted="$2"
-    local name hex r g b num_width fg marker label row
+    local name hex r g b num_width marker label row
     num_width=${#_TINT_PICKER_TOTAL}
 
     if [ "$row_idx" -eq 0 ]; then
@@ -648,7 +648,8 @@ _tint_render_row() {
         # shellcheck disable=SC3054
         r="${_tint_themes_bg_r[$row_idx]}" g="${_tint_themes_bg_g[$row_idx]}" b="${_tint_themes_bg_b[$row_idx]}"
         # shellcheck disable=SC3054
-        local fr="${_tint_themes_fg_r[$row_idx]}" fg="${_tint_themes_fg_g[$row_idx]}" fb="${_tint_themes_fg_b[$row_idx]}"
+        # shellcheck disable=SC3054
+        local fg_r="${_tint_themes_fg_r[$row_idx]}" fg_g="${_tint_themes_fg_g[$row_idx]}" fg_b="${_tint_themes_fg_b[$row_idx]}"
         # shellcheck disable=SC3045
         printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
         local padded
@@ -656,10 +657,10 @@ _tint_render_row() {
         printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
         if [ "$highlighted" -eq 1 ]; then
             # shellcheck disable=SC3045
-            printf -v row '%s\e[38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fr" "$fg" "$fb" "$r" "$g" "$b" "$padded"
+            printf -v row '%s\e[38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg_r" "$fg_g" "$fg_b" "$r" "$g" "$b" "$padded"
         else
             # shellcheck disable=SC3045
-            printf -v row '%s\e[2;38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fr" "$fg" "$fb" "$r" "$g" "$b" "$padded"
+            printf -v row '%s\e[2;38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg_r" "$fg_g" "$fg_b" "$r" "$g" "$b" "$padded"
         fi
     else
         # shellcheck disable=SC3045

@@ -885,6 +885,7 @@ _setup_render_row() {
 @test "render: highlighted row uses normal weight" {
     _setup_render_row
     _tint_render_row 1 1
+    [[ "$_tint_picker_buf" == *"38;2;"* ]]
     [[ "$_tint_picker_buf" == *"48;2;"* ]]
     [[ "$_tint_picker_buf" != *$'\e[2;'* ]]
 }
