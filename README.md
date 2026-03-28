@@ -64,9 +64,12 @@ tint -v, --version    # Show version
 ## Built-in Themes
 
 ```
-ayu, catppuccin, cobalt, dracula, everforest, github, gruvbox, horizon,
-kanagawa, material, monokai, night-owl, nord, onedark, palenight,
-rose-pine, solarized, synthwave, tokyo
+ayu, campbell, catppuccin-frappe, catppuccin-macchiato, catppuccin-mocha,
+cobalt, dracula, everforest-dark, github, gruvbox-dark, horizon, kanagawa,
+material, monokai, night-owl, nord, onedark, palenight, rose-pine,
+rose-pine-moon, solarized-dark, synthwave, tango, tokyo,
+catppuccin-latte, everforest-light, gruvbox-light, onelight,
+rose-pine-dawn, solarized-light
 ```
 
 ## Custom Palette
