@@ -47,7 +47,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.15.3"
+TINT_VERSION="0.16.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -62,10 +62,12 @@ _TINT_PICKER_ROW_WIDTH=41
 _TINT_DEFAULT_PALETTE='
 ayu:#0a0e14:#b3b1ad:#0a0e14:#ff3333:#c2d94c:#ff8f40:#59c2ff:#ffee99:#95e6cb:#b3b1ad:#4d5566:#ff3333:#c2d94c:#ff8f40:#59c2ff:#ffee99:#95e6cb:#b3b1ad
 campbell:#0c0c0c:#cccccc:#0c0c0c:#c50f1f:#13a10e:#c19c00:#0037da:#881798:#3a96dd:#cccccc:#767676:#e74856:#16c60c:#f9f1a5:#3b78ff:#b4009e:#61d6d6:#f2f2f2
-catppuccin:#1e1e2e:#cdd6f4:#45475a:#f38ba8:#a6e3a1:#f9e2af:#89b4fa:#f5c2e7:#94e2d5:#bac2de:#585b70:#f38ba8:#a6e3a1:#f9e2af:#89b4fa:#f5c2e7:#94e2d5:#a6adc8
+catppuccin-frappe:#303446:#c6d0f5:#51576d:#e78284:#a6d189:#e5c890:#8caaee:#f4b8e4:#81c8be:#b5bfe2:#626880:#e78284:#a6d189:#e5c890:#8caaee:#f4b8e4:#81c8be:#a5adce
+catppuccin-macchiato:#24273a:#cad3f5:#494d64:#ed8796:#a6da95:#eed49f:#8aadf4:#f5bde6:#8bd5ca:#b8c0e0:#5b6078:#ed8796:#a6da95:#eed49f:#8aadf4:#f5bde6:#8bd5ca:#a5adcb
+catppuccin-mocha:#1e1e2e:#cdd6f4:#45475a:#f38ba8:#a6e3a1:#f9e2af:#89b4fa:#f5c2e7:#94e2d5:#bac2de:#585b70:#f38ba8:#a6e3a1:#f9e2af:#89b4fa:#f5c2e7:#94e2d5:#a6adc8
 cobalt:#132738:#ffffff:#000000:#ff0000:#38de21:#ffe50a:#1460d2:#ff005d:#00bbbb:#bbbbbb:#555555:#f40e17:#3bd01d:#edc809:#5555ff:#ff55ff:#6ae3fa:#ffffff
 dracula:#282a36:#f8f8f2:#262626:#e64747:#42e66c:#e4f34a:#9b6bdf:#e356a7:#75d7ec:#f8f8f2:#7a7a7a:#ff5555:#50fa7b:#f1fa8c:#bd93f9:#ff79c6:#8be9fd:#f9f9fb
-everforest:#2d353b:#d3c6aa:#2e383c:#e67e80:#a7c080:#dbbc7f:#7fbbb3:#d699b6:#83c092:#d3c6aa:#5c6a72:#f85552:#8da101:#dfa000:#3a94c5:#df69ba:#35a77c:#dfddc8
+everforest-dark:#2d353b:#d3c6aa:#2e383c:#e67e80:#a7c080:#dbbc7f:#7fbbb3:#d699b6:#83c092:#d3c6aa:#5c6a72:#f85552:#8da101:#dfa000:#3a94c5:#df69ba:#35a77c:#dfddc8
 github:#101216:#8b949e:#000000:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#ffffff:#4d4d4d:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#ffffff
 gruvbox-dark:#282828:#ebdbb2:#282828:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#a89984:#928374:#fb4934:#b8bb26:#fabd2f:#83a598:#d3869b:#8ec07c:#ebdbb2
 horizon:#1c1e26:#fdf0ed:#16161c:#e95678:#29d398:#fab795:#26bbd9:#ee64ae:#59e3e3:#fadad1:#232530:#ec6a88:#3fdaa4:#fbc3a7:#3fc6de:#f075b7:#6be6e6:#fdf0ed
@@ -77,11 +79,16 @@ nord:#2e3440:#d8dee9:#3b4252:#bf616a:#a3be8c:#ebcb8b:#81a1c1:#b48ead:#88c0d0:#e5
 onedark:#1e2127:#5c6370:#000000:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#abb2bf:#5c6370:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#fffefe
 palenight:#292d3e:#bfc7d5:#292d3e:#f07178:#c3e88d:#ffcb6b:#82aaff:#c792ea:#60adec:#abb2bf:#959dcb:#f07178:#c3e88d:#ff5572:#82aaff:#ffcb6b:#676e95:#fffefe
 rose-pine:#191724:#e0def4:#26233a:#eb6f92:#31748f:#f6c177:#9ccfd8:#c4a7e7:#ebbcba:#e0def4:#6e6a86:#eb6f92:#31748f:#f6c177:#9ccfd8:#c4a7e7:#ebbcba:#e0def4
+rose-pine-moon:#232136:#e0def4:#393552:#eb6f92:#3e8fb0:#f6c177:#9ccfd8:#c4a7e7:#ea9a97:#e0def4:#6e6a86:#eb6f92:#3e8fb0:#f6c177:#9ccfd8:#c4a7e7:#ea9a97:#e0def4
 solarized-dark:#002b36:#839496:#073642:#dc322f:#859900:#cf9a6b:#268bd2:#d33682:#2aa198:#eee8d5:#657b83:#cb4b16:#859900:#cf9a6b:#6c71c4:#d33682:#2aa198:#fdf6e3
 synthwave:#262335:#ffffff:#011627:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff:#575656:#fe4450:#72f1b8:#fede5d:#03edf9:#ff7edb:#03edf9:#ffffff
 tango:#2e3436:#d3d7cf:#000000:#cc0000:#4e9a06:#c4a000:#3465a4:#75507b:#06989a:#d3d7cf:#555753:#ef2929:#8ae234:#fce94f:#739fcf:#ad7fa8:#34e2e2:#eeeeec
 tokyo:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5
+catppuccin-latte:#eff1f5:#4c4f69:#5c5f77:#d20f39:#40a02b:#df8e1d:#1e66f5:#ea76cb:#179299:#acb0be:#6c6f85:#d20f39:#40a02b:#df8e1d:#1e66f5:#ea76cb:#179299:#bcc0cc
+everforest-light:#fdf6e3:#5c6a72:#5c6a72:#f85552:#8da101:#dfa000:#3a94c5:#df69ba:#35a77c:#e0dcc7:#5c6a72:#f85552:#8da101:#dfa000:#3a94c5:#df69ba:#35a77c:#e0dcc7
 gruvbox-light:#fbf1c7:#3c3836:#fdf4c1:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#7c6f64:#928374:#9d0006:#79740e:#b57614:#076678:#8f3f71:#427b58:#3c3836
+onelight:#fafafa:#383a42:#000000:#e45649:#50a14f:#986801:#4078f2:#a626a4:#0184bc:#a0a1a7:#383a42:#e45649:#50a14f:#986801:#4078f2:#a626a4:#0184bc:#ffffff
+rose-pine-dawn:#faf4ed:#575279:#f2e9e1:#b4637a:#286983:#ea9d34:#56949f:#907aa9:#d7827e:#575279:#9893a5:#b4637a:#286983:#ea9d34:#56949f:#907aa9:#d7827e:#575279
 solarized-light:#fdf6e3:#657b83:#002b36:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#073642:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3
 '
 
