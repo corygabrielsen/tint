@@ -66,7 +66,7 @@ tint -v, --version    # Show version
 **Dark:**
 `ayu` `campbell` `catppuccin-frappe` `catppuccin-macchiato` `catppuccin-mocha`
 `cobalt` `dracula` `everforest-dark` `github` `gruvbox-dark` `horizon`
-`kanagawa` `material` `monokai` `night-owl` `nord` `onedark` `palenight`
+`kanagawa` `linux-console` `material` `monokai` `night-owl` `nord` `onedark` `palenight`
 `rose-pine` `rose-pine-moon` `solarized-dark` `synthwave` `tango` `tokyo`
 
 **Light:**

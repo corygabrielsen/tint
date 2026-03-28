@@ -47,7 +47,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.16.0"
+TINT_VERSION="0.17.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -72,6 +72,7 @@ github:#101216:#8b949e:#000000:#f78166:#56d364:#e3b341:#6ca4f8:#db61a2:#2b7489:#
 gruvbox-dark:#282828:#ebdbb2:#282828:#cc241d:#98971a:#d79921:#458588:#b16286:#689d6a:#a89984:#928374:#fb4934:#b8bb26:#fabd2f:#83a598:#d3869b:#8ec07c:#ebdbb2
 horizon:#1c1e26:#fdf0ed:#16161c:#e95678:#29d398:#fab795:#26bbd9:#ee64ae:#59e3e3:#fadad1:#232530:#ec6a88:#3fdaa4:#fbc3a7:#3fc6de:#f075b7:#6be6e6:#fdf0ed
 kanagawa:#1f1f28:#dcd7ba:#090618:#c34043:#76946a:#c0a36e:#7e9cd8:#957fb8:#6a9589:#c8c093:#727169:#e82424:#98bb6c:#e6c384:#7fb4ca:#938aa9:#7aa89f:#dcd7ba
+linux-console:#000000:#aaaaaa:#000000:#aa0000:#00aa00:#aa5500:#0000aa:#aa00aa:#00aaaa:#aaaaaa:#555555:#ff5555:#55ff55:#ffff55:#5555ff:#ff55ff:#55ffff:#ffffff
 material:#1e282c:#c3c7d1:#073641:#eb606b:#c3e88d:#f7eb95:#80cbc3:#ff2490:#aeddff:#ffffff:#002b36:#eb606b:#c3e88d:#f7eb95:#7dc6bf:#6c71c3:#34434d:#ffffff
 monokai:#272822:#f8f8f2:#75715e:#f92672:#a6e22e:#f4bf75:#66d9ef:#ae81ff:#2aa198:#f9f8f5:#272822:#f92672:#a6e22e:#f4bf75:#66d9ef:#ae81ff:#2aa198:#f8f8f2
 night-owl:#011627:#d6deeb:#011627:#ef5350:#22da6e:#addb67:#82aaff:#c792ea:#21c7a8:#ffffff:#575656:#ef5350:#22da6e:#ffeb95:#82aaff:#c792ea:#7fdbca:#ffffff
