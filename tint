@@ -47,7 +47,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.15.2"
+TINT_VERSION="0.15.3"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -425,7 +425,7 @@ _tint_fg_for_bg() {
 #   _tint_themes[i]           str   full theme value (#bg:#fg:#00:...:#15)
 #   _tint_themes_fg[i]        str   fg hex (#RRGGBB) — pre-lowercased from theme
 #   _tint_themes_bg_r/g/b[i]  int   bg RGB components (for ANSI 48;2;r;g;b)
-#   _tint_picker_text_sgr[i]  str   computed fg ANSI attr ("30" or "97")
+#   _tint_themes_fg_r[i]     int   fg red   (0–255, from theme fg hex)
 #
 #   Session context (locals in tint_pick, visible via dynamic scoping)
 #   Name                 Type  Description
@@ -615,7 +615,7 @@ _tint_render_hint_line() {
 #   - Highlighted rows are normal weight; others are dim (\e[2m)
 #
 # Reads: _TINT_PICKER_DEFAULT, _TINT_PICKER_TOTAL, _TINT_PICKER_ORIGINAL_BG,
-#   _tint_themes_name[], _tint_themes_bg[], _tint_themes_bg_r[], _tint_themes_bg_g[], _tint_themes_bg_b[], _tint_picker_text_sgr[]
+#   _tint_themes_name[], _tint_themes_bg[], _tint_themes_bg_r/g/b[], _tint_themes_fg_r/g/b[]
 _tint_render_row() {
     local row_idx="$1" highlighted="$2"
     local name hex r g b num_width fg marker label row
@@ -648,7 +648,7 @@ _tint_render_row() {
         # shellcheck disable=SC3054
         r="${_tint_themes_bg_r[$row_idx]}" g="${_tint_themes_bg_g[$row_idx]}" b="${_tint_themes_bg_b[$row_idx]}"
         # shellcheck disable=SC3054
-        fg="${_tint_picker_text_sgr[$row_idx]}"
+        local fr="${_tint_themes_fg_r[$row_idx]}" fg="${_tint_themes_fg_g[$row_idx]}" fb="${_tint_themes_fg_b[$row_idx]}"
         # shellcheck disable=SC3045
         printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
         local padded
@@ -656,10 +656,10 @@ _tint_render_row() {
         printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
         if [ "$highlighted" -eq 1 ]; then
             # shellcheck disable=SC3045
-            printf -v row '%s\e[%s;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg" "$r" "$g" "$b" "$padded"
+            printf -v row '%s\e[38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fr" "$fg" "$fb" "$r" "$g" "$b" "$padded"
         else
             # shellcheck disable=SC3045
-            printf -v row '%s\e[2;%s;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg" "$r" "$g" "$b" "$padded"
+            printf -v row '%s\e[2;38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fr" "$fg" "$fb" "$r" "$g" "$b" "$padded"
         fi
     else
         # shellcheck disable=SC3045
@@ -921,20 +921,6 @@ _tint_accept_selection() {
     fi
 }
 
-# _tint_compute_text_sgr <idx> - Set _tint_picker_text_sgr[idx] based on RGB luminance
-#
-# Uses the perceived brightness formula (BT.601 luma) to pick
-# black (30) or white (97) foreground for readability.
-#
-# Sets: _tint_picker_text_sgr[idx]
-_tint_compute_text_sgr() {
-    # shellcheck disable=SC3054
-    if [ $(( (_tint_themes_bg_r[$1] * 299 + _tint_themes_bg_g[$1] * 587 + _tint_themes_bg_b[$1] * 114) / 1000 )) -gt 128 ]; then
-        _tint_picker_text_sgr[$1]="30"
-    else
-        _tint_picker_text_sgr[$1]="97"
-    fi
-}
 
 # _tint_load_palette_arrays - Parse palette into parallel arrays with pre-computed RGB/fg
 #
@@ -942,7 +928,7 @@ _tint_compute_text_sgr() {
 #
 # Sets: _tint_palette_count, _TINT_PICKER_TOTAL, _tint_last_idx (via dynamic scoping),
 #   _tint_themes_name[], _tint_themes_bg[], _tint_themes[], _tint_themes_fg[],
-#   _tint_themes_bg_r[], _tint_themes_bg_g[], _tint_themes_bg_b[], _tint_picker_text_sgr[]
+#   _tint_themes_bg_r/g/b[], _tint_themes_fg_r/g/b[]
 _tint_load_palette_arrays() {
     local line name theme bg
     i=0
@@ -975,9 +961,14 @@ _tint_load_palette_arrays() {
         printf -v "_tint_themes_bg[$i]" '#%02x%02x%02x' "${_tint_themes_bg_r[$i]}" "${_tint_themes_bg_g[$i]}" "${_tint_themes_bg_b[$i]}"
         # Lowercase fg hex (no fork). _fg_raw already validated above.
         # printf %02x produces lowercase hex, matching the bg path above.
-        # shellcheck disable=SC3045,SC3054,SC3057,SC3052
-        printf -v "_tint_themes_fg[$i]" '#%02x%02x%02x' "$((16#${_fg_raw:1:2}))" "$((16#${_fg_raw:3:2}))" "$((16#${_fg_raw:5:2}))"
-        _tint_compute_text_sgr "$i"
+        # shellcheck disable=SC3054,SC3057,SC3052
+        _tint_themes_fg_r[i]=$((16#${_fg_raw:1:2}))
+        # shellcheck disable=SC3054,SC3057,SC3052
+        _tint_themes_fg_g[i]=$((16#${_fg_raw:3:2}))
+        # shellcheck disable=SC3054,SC3057,SC3052
+        _tint_themes_fg_b[i]=$((16#${_fg_raw:5:2}))
+        # shellcheck disable=SC3045,SC3054
+        printf -v "_tint_themes_fg[$i]" '#%02x%02x%02x' "${_tint_themes_fg_r[$i]}" "${_tint_themes_fg_g[$i]}" "${_tint_themes_fg_b[$i]}"
     done <<EOF
 $TINT_PALETTE
 EOF
@@ -1006,9 +997,10 @@ ERRMSG
     printf '  A supported terminal will echo back the current background color.\n' >&2
 }
 
-# _tint_compute_unchanged_entry - Pre-compute RGB and foreground for the original background
+# _tint_compute_unchanged_entry - Pre-compute RGB for the original background and foreground
 #
-# Sets: _tint_themes_bg_r[0], _tint_themes_bg_g[0], _tint_themes_bg_b[0], _tint_picker_text_sgr[0]
+# Sets: _tint_themes_bg_r[0], _tint_themes_bg_g[0], _tint_themes_bg_b[0],
+#        _tint_themes_fg_r[0], _tint_themes_fg_g[0], _tint_themes_fg_b[0]
 _tint_compute_unchanged_entry() {
     if [ -n "$_TINT_PICKER_ORIGINAL_BG" ]; then
         # shellcheck disable=SC3054,SC3057,SC3052
@@ -1017,7 +1009,22 @@ _tint_compute_unchanged_entry() {
         _tint_themes_bg_g[0]=$((16#${_TINT_PICKER_ORIGINAL_BG:3:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
         _tint_themes_bg_b[0]=$((16#${_TINT_PICKER_ORIGINAL_BG:5:2}))
-        _tint_compute_text_sgr 0
+    fi
+    if [ -n "$_TINT_PICKER_ORIGINAL_FG" ]; then
+        # shellcheck disable=SC3054,SC3057,SC3052
+        _tint_themes_fg_r[0]=$((16#${_TINT_PICKER_ORIGINAL_FG:1:2}))
+        # shellcheck disable=SC3054,SC3057,SC3052
+        _tint_themes_fg_g[0]=$((16#${_TINT_PICKER_ORIGINAL_FG:3:2}))
+        # shellcheck disable=SC3054,SC3057,SC3052
+        _tint_themes_fg_b[0]=$((16#${_TINT_PICKER_ORIGINAL_FG:5:2}))
+    else
+        # No fg queried — use luma-based black or white
+        # shellcheck disable=SC3054
+        if [ $(( (_tint_themes_bg_r[0] * 299 + _tint_themes_bg_g[0] * 587 + _tint_themes_bg_b[0] * 114) / 1000 )) -gt 128 ]; then
+            _tint_themes_fg_r[0]=0; _tint_themes_fg_g[0]=0; _tint_themes_fg_b[0]=0
+        else
+            _tint_themes_fg_r[0]=255; _tint_themes_fg_g[0]=255; _tint_themes_fg_b[0]=255
+        fi
     fi
 }
 
@@ -1176,7 +1183,7 @@ _tint_setup_terminal() {
 #
 # Sets (via dynamic scoping from tint_pick):
 #   _tint_themes_name[], _tint_themes_bg[], _tint_themes_fg[],
-#   _tint_themes_bg_r[], _tint_themes_bg_g[], _tint_themes_bg_b[], _tint_picker_text_sgr[],
+#   _tint_themes_bg_r/g/b[], _tint_themes_fg_r/g/b[],
 #   _tint_saved_traps, _tint_saved_exit, _tint_esc_timeout, _tint_read_timeout,
 #   _tint_palette_count, _tint_last_idx
 # Returns: non-zero on failure (no bash, no tty, no OSC 11 support)
@@ -1316,7 +1323,8 @@ tint_pick() {
     local i _tint_palette_count _tint_last_idx
     # shellcheck disable=SC3054
     local -a _tint_themes_name _tint_themes_bg _tint_themes _tint_themes_fg \
-             _tint_themes_bg_r _tint_themes_bg_g _tint_themes_bg_b _tint_picker_text_sgr
+             _tint_themes_bg_r _tint_themes_bg_g _tint_themes_bg_b \
+             _tint_themes_fg_r _tint_themes_fg_g _tint_themes_fg_b
     local _tint_saved_traps _tint_saved_exit
     local _tint_esc_timeout _tint_read_timeout
 
