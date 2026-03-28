@@ -445,6 +445,7 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "gruvbox-light:#fbf1c7:" ]]
     [[ "$TINT_PALETTE" =~ "horizon:#1c1e26:" ]]
     [[ "$TINT_PALETTE" =~ "kanagawa:#1f1f28:" ]]
+    [[ "$TINT_PALETTE" =~ "linux-console:#000000:" ]]
     [[ "$TINT_PALETTE" =~ "material:#1e282c:" ]]
     [[ "$TINT_PALETTE" =~ "monokai:#272822:" ]]
     [[ "$TINT_PALETTE" =~ "night-owl:#011627:" ]]
@@ -460,7 +461,7 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
     [[ "$TINT_PALETTE" =~ "tango:#2e3436:" ]]
     [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
-    [ "$(_tint_palette_count)" -eq 30 ]
+    [ "$(_tint_palette_count)" -eq 31 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
