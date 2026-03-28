@@ -648,7 +648,6 @@ _tint_render_row() {
         # shellcheck disable=SC3054
         r="${_tint_themes_bg_r[$row_idx]}" g="${_tint_themes_bg_g[$row_idx]}" b="${_tint_themes_bg_b[$row_idx]}"
         # shellcheck disable=SC3054
-        # shellcheck disable=SC3054
         local fg_r="${_tint_themes_fg_r[$row_idx]}" fg_g="${_tint_themes_fg_g[$row_idx]}" fg_b="${_tint_themes_fg_b[$row_idx]}"
         # shellcheck disable=SC3045
         printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"

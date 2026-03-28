@@ -893,6 +893,7 @@ _setup_render_row() {
 @test "render: unhighlighted row uses dim" {
     _setup_render_row
     _tint_render_row 1 0
+    [[ "$_tint_picker_buf" == *"38;2;"* ]]
     [[ "$_tint_picker_buf" == *$'\e[2;'* ]]
 }
 
