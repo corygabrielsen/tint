@@ -30,8 +30,8 @@ lint:
 	@shellcheck --shell=bats \
 		--exclude=SC1091,SC2030,SC2031,SC2314,SC2315 \
 		test/*.bats
-	@npx prettier --check '**/*.md' >/dev/null 2>&1 || \
-		(printf '%b%s%b %s\n' '$(_C_ERR)' '✗' '$(_C_RST)' 'Markdown not formatted. Run: npx prettier --write \"**/*.md\"' && exit 1)
+	@npx --yes prettier@3.8.1 --check '**/*.md' >/dev/null || \
+		(printf '%b%s%b %s\n' '$(_C_ERR)' '✗' '$(_C_RST)' "Markdown not formatted. Run: npx prettier --write '**/*.md'" && exit 1)
 
 test:
 	@bats test/
