@@ -63,7 +63,7 @@ tint -v, --version    # Show version
 
 ## Built-in Themes
 
-**Dark:** `ayu` `campbell` `catppuccin-frappe` `catppuccin-macchiato` `catppuccin-mocha` `cobalt` `dracula` `everforest-dark` `github` `gruvbox-dark` `horizon` `kanagawa` `linux-console` `material` `monokai` `night-owl` `nord` `onedark` `palenight` `rose-pine` `rose-pine-moon` `solarized-dark` `synthwave` `tango` `tokyo`
+**Dark:** `ayu` `campbell` `catppuccin-frappe` `catppuccin-macchiato` `catppuccin-mocha` `cobalt` `dracula` `everforest-dark` `github` `gruvbox-dark` `horizon` `kanagawa` `linux-console` `material` `monokai` `night-owl` `nord` `onedark` `palenight` `putty` `rose-pine` `rose-pine-moon` `solarized-dark` `synthwave` `tango` `tokyo`
 
 **Light:** `catppuccin-latte` `everforest-light` `gruvbox-light` `onelight` `rose-pine-dawn` `solarized-light`
 

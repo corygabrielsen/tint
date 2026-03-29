@@ -47,7 +47,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.17.0"
+TINT_VERSION="0.18.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -79,6 +79,7 @@ night-owl:#011627:#d6deeb:#011627:#ef5350:#22da6e:#addb67:#82aaff:#c792ea:#21c7a
 nord:#2e3440:#d8dee9:#3b4252:#bf616a:#a3be8c:#ebcb8b:#81a1c1:#b48ead:#88c0d0:#e5e9f0:#4c566a:#bf616a:#a3be8c:#ebcb8b:#81a1c1:#b48ead:#8fbcbb:#eceff4
 onedark:#1e2127:#5c6370:#000000:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#abb2bf:#5c6370:#e06c75:#98c379:#d19a66:#61afef:#c678dd:#56b6c2:#fffefe
 palenight:#292d3e:#bfc7d5:#292d3e:#f07178:#c3e88d:#ffcb6b:#82aaff:#c792ea:#60adec:#abb2bf:#959dcb:#f07178:#c3e88d:#ff5572:#82aaff:#ffcb6b:#676e95:#fffefe
+putty:#000000:#bbbbbb:#000000:#bb0000:#00bb00:#bbbb00:#0000bb:#bb00bb:#00bbbb:#bbbbbb:#555555:#ff5555:#55ff55:#ffff55:#5555ff:#ff55ff:#55ffff:#ffffff
 rose-pine:#191724:#e0def4:#26233a:#eb6f92:#31748f:#f6c177:#9ccfd8:#c4a7e7:#ebbcba:#e0def4:#6e6a86:#eb6f92:#31748f:#f6c177:#9ccfd8:#c4a7e7:#ebbcba:#e0def4
 rose-pine-moon:#232136:#e0def4:#393552:#eb6f92:#3e8fb0:#f6c177:#9ccfd8:#c4a7e7:#ea9a97:#e0def4:#6e6a86:#eb6f92:#3e8fb0:#f6c177:#9ccfd8:#c4a7e7:#ea9a97:#e0def4
 solarized-dark:#002b36:#839496:#073642:#dc322f:#859900:#cf9a6b:#268bd2:#d33682:#2aa198:#eee8d5:#657b83:#cb4b16:#859900:#cf9a6b:#6c71c4:#d33682:#2aa198:#fdf6e3
