@@ -430,6 +430,7 @@ INNEREOF
 @test "palette has expected themes" {
     # Source directly - sourcing via function scopes the variable to that function
     source "$DIR/tint"
+    [[ "$TINT_PALETTE" =~ "apprentice:#262626:" ]]
     [[ "$TINT_PALETTE" =~ "ayu:#0a0e14:" ]]
     [[ "$TINT_PALETTE" =~ "campbell:#0c0c0c:" ]]
     [[ "$TINT_PALETTE" =~ "catppuccin-frappe:#303446:" ]]
@@ -462,7 +463,7 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
     [[ "$TINT_PALETTE" =~ "tango:#2e3436:" ]]
     [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
-    [ "$(_tint_palette_count)" -eq 32 ]
+    [ "$(_tint_palette_count)" -eq 33 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
