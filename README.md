@@ -75,25 +75,17 @@ Each theme is a name followed by 18 hex colors: background, foreground, and ANSI
 name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
 ```
 
-Create a palette file at `~/.config/tint/palette.conf`:
+Drop theme files into `~/.config/tint/themes/` (any filename works):
 
-```
+```bash
+mkdir -p ~/.config/tint/themes
+cat > ~/.config/tint/themes/mine.theme <<'EOF'
 mytheme:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5
+EOF
+tint mytheme
 ```
 
-Then:
-
-```bash
-export TINT_PALETTE_FILE=~/.config/tint/palette.conf
-tint
-```
-
-Or inline:
-
-```bash
-export TINT_PALETTE='mytheme:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5'
-tint
-```
+Each file can contain one or more theme entries, one per line. Files are read in alphabetical order and appended to the built-in palette. Pick unique names for your drop-in themes — built-ins win lookups on name collision. Set `TINT_PALETTE_DIR` to override the default directory.
 
 ## Library Usage
 

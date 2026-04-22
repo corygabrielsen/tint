@@ -4,12 +4,54 @@
 setup() {
     DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
     PATH="$DIR:$PATH"
+    # Default isolation: tests assume only the built-in palette is present.
+    # Tests that exercise the drop-in dir must override TINT_PALETTE_DIR
+    # explicitly (typically via _load_tint_with_themes).
+    export TINT_PALETTE_DIR=/nonexistent-tint-test-dir
+    # Filler suffix for drop-in themes — fg + 16 ANSI slots. Drop-in tests
+    # prepend `name:#bg` and don't assert on the suffix values.
+    ANSI16=':#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
     _setup_picker_constants
 }
 
 # Helper to source the library within a test (BATS runs tests in subshells)
 _load_tint() {
     source "$DIR/tint"
+}
+
+# Source tint with TINT_PALETTE_DIR pointing at a temp dir populated with
+# the given (filename, content) pairs. Cleans up the tmpdir afterward.
+_load_tint_with_themes() {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    while [ $# -ge 2 ]; do
+        printf '%s\n' "$2" > "$tmpdir/$1"
+        shift 2
+    done
+    TINT_PALETTE_DIR="$tmpdir" source "$DIR/tint"
+    rm -rf "$tmpdir"
+}
+
+# Assert that a relative value in $var causes its theme dir to be ignored.
+# Plants a "shouldnotload" theme at $subpath (relative to a tmp cwd) and
+# verifies it doesn't appear in TINT_PALETTE. Higher-priority env vars are
+# unset so the var under test is the active config source.
+_assert_relative_path_ignored() {
+    local var="$1" val="$2" subpath="$3"
+    local fakethemes
+    fakethemes=$(mktemp -d)
+    mkdir -p "$fakethemes/$subpath"
+    echo "shouldnotload:#abcdef${ANSI16}" > "$fakethemes/$subpath/x.theme"
+    cd "$fakethemes" || return 1
+    case "$var" in
+        XDG_CONFIG_HOME) unset TINT_PALETTE_DIR ;;
+        HOME)            unset TINT_PALETTE_DIR XDG_CONFIG_HOME ;;
+    esac
+    # shellcheck disable=SC2163
+    export "$var=$val"
+    source "$DIR/tint"
+    rm -rf "$fakethemes"
+    [[ ! "$TINT_PALETTE" =~ "shouldnotload:" ]]
 }
 
 # Derive palette constants so picker tests don't hardcode theme names or counts.
@@ -428,7 +470,8 @@ INNEREOF
 # =============================================================================
 
 @test "palette has expected themes" {
-    # Source directly - sourcing via function scopes the variable to that function
+    # Source directly - sourcing via function scopes the variable to that function.
+    # Global setup() sets TINT_PALETTE_DIR to a nonexistent dir for hermeticity.
     source "$DIR/tint"
     [[ "$TINT_PALETTE" =~ "apprentice:#262626:" ]]
     [[ "$TINT_PALETTE" =~ "ayu:#0a0e14:" ]]
@@ -468,57 +511,210 @@ INNEREOF
 
 @test "palette rejects hyphen-prefixed names" {
     # Names starting with - would be confused with CLI flags by cut/sed/grep
-    local full=':#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
-    source "$DIR/tint"
-    export TINT_PALETTE="-badname:#abcdef${full}"$'\n'"good:#123456${full}"
-    source "$DIR/tint"
-    # Only the valid name should survive
-    [ "$(_tint_palette_count)" -eq 1 ]
-    [[ "$(_tint_palette_get 1)" == "good:#123456"* ]]
+    local full="$ANSI16"
+    _load_tint_with_themes custom.theme "$(printf '%s\n%s' "-badname:#abcdef${full}" "good:#123456${full}")"
+    [[ "$TINT_PALETTE" =~ "good:#123456" ]]
+    [[ ! "$TINT_PALETTE" =~ "-badname:" ]]
 }
 
-@test "TINT_PALETTE env overrides default" {
-    # Set env before sourcing so _tint_load_palette sees it as a string
-    export TINT_PALETTE='custom:#abcdef:#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
-    source "$DIR/tint"
+@test "TINT_PALETTE_DIR extends the default palette" {
+    _load_tint_with_themes custom.theme 'custom:#abcdef:#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
+    # Built-ins preserved and user theme appended
+    [[ "$TINT_PALETTE" =~ "dracula:" ]]
+    [[ "$TINT_PALETTE" =~ "custom:#abcdef:" ]]
+}
 
-    [ "$(_tint_palette_count)" -eq 1 ]
-    [[ "$(_tint_palette_get 1)" == "custom:#abcdef:"* ]]
+@test "missing TINT_PALETTE_DIR yields only built-ins" {
+    TINT_PALETTE_DIR=/nonexistent-tint-test-dir source "$DIR/tint"
+    [[ "$TINT_PALETTE" =~ "dracula:" ]]
+    [ "$(_tint_palette_count)" -gt 0 ]
+}
+
+@test "TINT_PALETTE_DIR reads multiple files in alphabetical order" {
+    local full="$ANSI16"
+    _load_tint_with_themes \
+        a.theme "zulu:#abcdef${full}" \
+        b.theme "alpha:#123456${full}"
+    [[ "$TINT_PALETTE" =~ "zulu:#abcdef:" ]]
+    [[ "$TINT_PALETTE" =~ "alpha:#123456:" ]]
+    # zulu (from a.theme) must come before alpha (from b.theme)
+    local zulu_pos alpha_pos
+    zulu_pos=$(echo "$TINT_PALETTE" | grep -n '^zulu:' | cut -d: -f1)
+    alpha_pos=$(echo "$TINT_PALETTE" | grep -n '^alpha:' | cut -d: -f1)
+    [ "$zulu_pos" -lt "$alpha_pos" ]
+}
+
+@test "TINT_PALETTE_DIR preserves boundaries when a file lacks trailing newline" {
+    # A missing trailing newline in a.theme must not merge its last entry
+    # with b.theme's first (awk record boundaries enforce this).
+    local full="$ANSI16"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    printf '%s' "first:#abcdef${full}" > "$tmpdir/a.theme"
+    printf '%s\n' "second:#123456${full}" > "$tmpdir/b.theme"
+    TINT_PALETTE_DIR="$tmpdir" source "$DIR/tint"
+    rm -rf "$tmpdir"
+    [[ "$TINT_PALETTE" =~ "first:#abcdef:" ]]
+    [[ "$TINT_PALETTE" =~ "second:#123456:" ]]
+}
+
+@test "TINT_PALETTE_DIR handles filenames with spaces" {
+    # Unquoted path expansion would split a "my theme.theme" filename into
+    # two bogus arguments and silently drop the file.
+    local full="$ANSI16"
+    _load_tint_with_themes "my theme.theme" "spaced:#abcdef${full}"
+    [[ "$TINT_PALETTE" =~ "spaced:#abcdef:" ]]
+}
+
+@test "TINT_PALETTE_DIR includes dotfile theme files" {
+    # A bare shell glob ("$dir"/*) would skip leading-dot files. README
+    # says any filename works, so .hidden.theme must be loaded.
+    local full="$ANSI16"
+    _load_tint_with_themes .hidden.theme "hidden:#abcdef${full}"
+    [[ "$TINT_PALETTE" =~ "hidden:#abcdef:" ]]
+}
+
+@test "empty TINT_PALETTE_DIR does not error" {
+    # Empty dir must not error (ls -A sidesteps zsh NOMATCH / bash failglob).
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    TINT_PALETTE_DIR="$tmpdir" source "$DIR/tint"
+    rmdir "$tmpdir"
+    [[ "$TINT_PALETTE" =~ "dracula:" ]]
+}
+
+@test "sourcing tint survives set -u with HOME unset" {
+    # Sourcing must not abort with "HOME: unbound variable" under set -u.
+    run bash -c "set -u; unset HOME XDG_CONFIG_HOME TINT_PALETTE_DIR; source '$DIR/tint'"
+    [ "$status" -eq 0 ]
+}
+
+@test "unset HOME and XDG_CONFIG_HOME does not probe /.config" {
+    # Missing HOME/XDG_CONFIG_HOME must not collapse to /.config/tint/themes
+    # (a real path on some systems). No theme dir — built-ins only.
+    run bash -c "unset HOME XDG_CONFIG_HOME TINT_PALETTE_DIR; source '$DIR/tint'; echo \"\$TINT_PALETTE\" | grep -q '^dracula:'"
+    [ "$status" -eq 0 ]
+}
+
+@test "TINT_PALETTE_DIR follows symlinked directory" {
+    # Loader must follow a symlinked theme dir (common dotfile pattern).
+    local full="$ANSI16"
+    local realdir linkdir
+    realdir=$(mktemp -d)
+    linkdir=$(mktemp -d)/themes
+    echo "viasymlink:#abcdef${full}" > "$realdir/file.theme"
+    ln -s "$realdir" "$linkdir"
+    TINT_PALETTE_DIR="$linkdir" source "$DIR/tint"
+    rm -rf "$realdir" "$(dirname "$linkdir")"
+    [[ "$TINT_PALETTE" =~ "viasymlink:#abcdef:" ]]
+}
+
+@test "empty TINT_PALETTE_DIR disables user themes" {
+    # Explicit TINT_PALETTE_DIR= must short-circuit the XDG/HOME chain so
+    # callers can run hermetically without inventing a fake directory.
+    run bash -c "TINT_PALETTE_DIR= source '$DIR/tint'; echo \"\$TINT_PALETTE\" | grep -q '^dracula:'"
+    [ "$status" -eq 0 ]
+}
+
+@test "relative HOME is ignored in theme-dir fallback" {
+    _assert_relative_path_ignored HOME relhome relhome/.config/tint/themes
+}
+
+@test "relative XDG_CONFIG_HOME is ignored" {
+    _assert_relative_path_ignored XDG_CONFIG_HOME .config .config/tint/themes
+}
+
+@test "user theme name colliding with built-in is dropped" {
+    # Dedup keeps the first match; built-ins come first, so a user file
+    # naming itself "dracula" never ends up in TINT_PALETTE. Keeps the
+    # picker and tint_lookup consistent (no "pick this, can't recall it").
+    local full="$ANSI16"
+    _load_tint_with_themes mine.theme "dracula:#deadbe${full}"
+    # Only one dracula in palette and it's the built-in (#282a36).
+    [ "$(echo "$TINT_PALETTE" | grep -c '^dracula:')" -eq 1 ]
+    [[ "$TINT_PALETTE" =~ "dracula:#282a36:" ]]
+    [[ ! "$TINT_PALETTE" =~ "dracula:#deadbe:" ]]
+}
+
+@test "user theme reusing a built-in bg+fg pair is kept" {
+    # An ANSI-only variant of dracula (same #282a36/#f8f8f2 pair, different
+    # name, different ANSI slots) stays reachable by name. The picker's
+    # current-theme auto-detect degrades gracefully to first-match on that
+    # bg+fg ambiguity, but users can still select the theme directly.
+    local rest=':#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
+    _load_tint_with_themes ansionly.theme "ansionly:#282a36:#f8f8f2${rest}"
+    [[ "$TINT_PALETTE" =~ "dracula:#282a36:#f8f8f2" ]]
+    [[ "$TINT_PALETTE" =~ "ansionly:#282a36:#f8f8f2" ]]
+}
+
+@test "relative TINT_PALETTE_DIR is ignored" {
+    _assert_relative_path_ignored TINT_PALETTE_DIR themes themes
+}
+
+@test "tint_reload_palette picks up TINT_PALETTE_DIR changed after sourcing" {
+    # Library mode: source once, then change TINT_PALETTE_DIR, then reload.
+    local full="$ANSI16"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "lateload:#abcdef${full}" > "$tmpdir/x.theme"
+    source "$DIR/tint"
+    [[ ! "$TINT_PALETTE" =~ "lateload:" ]]
+    TINT_PALETTE_DIR="$tmpdir" tint_reload_palette
+    rm -rf "$tmpdir"
+    [[ "$TINT_PALETTE" =~ "lateload:#abcdef:" ]]
+}
+
+@test "absolute TINT_PALETTE_DIR with dash component loads cleanly" {
+    # A leading "/" in $TINT_PALETTE_DIR prevents a dash-prefixed component
+    # (e.g. /tmp/foo/-themes) from being read as an option.
+    local full="$ANSI16"
+    local parent
+    parent=$(mktemp -d)
+    mkdir "$parent/-themes"
+    echo "dashy:#abcdef${full}" > "$parent/-themes/x.theme"
+    TINT_PALETTE_DIR="$parent/-themes" source "$DIR/tint"
+    rm -rf "$parent"
+    [[ "$TINT_PALETTE" =~ "dashy:#abcdef:" ]]
+}
+
+@test "TINT_PALETTE_DIR loads symlinked theme files" {
+    # Loader must follow symlinks to regular theme files
+    # (common dotfile pattern: *.theme symlinked into the theme dir).
+    local full="$ANSI16"
+    local realdir linkdir
+    realdir=$(mktemp -d)
+    linkdir=$(mktemp -d)
+    echo "linkfile:#abcdef${full}" > "$realdir/orig.theme"
+    ln -s "$realdir/orig.theme" "$linkdir/link.theme"
+    TINT_PALETTE_DIR="$linkdir" source "$DIR/tint"
+    rm -rf "$realdir" "$linkdir"
+    [[ "$TINT_PALETTE" =~ "linkfile:#abcdef:" ]]
 }
 
 @test "empty palette does not crash _tint_load_palette_arrays" {
-    # When TINT_PALETTE has no valid name:#hex entries (e.g., 'invalid'),
-    # _tint_load_palette_arrays must skip malformed lines instead of crashing on
-    # arithmetic expansion with empty hex (16#${hex:1:2}).
-    export TINT_PALETTE='invalid'
-    source "$DIR/tint"
-    run bash -c "source '$DIR/tint'; export TINT_PALETTE='invalid'; _tint_load_palette_arrays"
+    # When TINT_PALETTE has no valid name:#hex entries, _tint_load_palette_arrays
+    # must skip malformed lines instead of crashing on arithmetic expansion.
+    run bash -c "source '$DIR/tint'; TINT_PALETTE=''; _tint_load_palette_arrays"
     [ "$status" -eq 0 ]
 }
 
 @test "malformed hex does not crash _tint_load_palette_arrays" {
     # Truncated hex like 'bad:#12' bypasses the empty check but crashes
     # on 16#${hex:5:2} with empty substring. Guard must validate full #RRGGBB.
-    run bash -c "source '$DIR/tint'; export TINT_PALETTE='bad:#12'; _tint_load_palette_arrays"
+    run bash -c "source '$DIR/tint'; TINT_PALETTE='bad:#12'; _tint_load_palette_arrays"
     [ "$status" -eq 0 ]
 }
 
 @test "palette validates full 18-color theme entries" {
     # Only entries with all 18 hex values (bg + fg + 16 ANSI) pass validation
-    source "$DIR/tint"
-    local full='test:#aabbcc:#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
-    export TINT_PALETTE="$full"
-    source "$DIR/tint"
-    [ "$(_tint_palette_count)" -eq 1 ]
-    [[ "$(_tint_palette_get 1)" == "test:#aabbcc:"* ]]
+    _load_tint_with_themes test.theme 'test:#aabbcc:#112233:#000000:#111111:#222222:#333333:#444444:#555555:#666666:#777777:#888888:#999999:#aaaaaa:#bbbbbb:#cccccc:#dddddd:#eeeeee:#ffffff'
+    [[ "$TINT_PALETTE" =~ "test:#aabbcc:" ]]
 }
 
 @test "palette rejects legacy bg-only entries" {
     # Old name:#bg format is no longer valid
-    source "$DIR/tint"
-    export TINT_PALETTE='old:#abcdef'
-    source "$DIR/tint"
-    [ "$(_tint_palette_count)" -eq 0 ]
+    _load_tint_with_themes legacy.theme 'old:#abcdef'
+    [[ ! "$TINT_PALETTE" =~ "old:#abcdef" ]]
 }
 
 @test "tint_lookup returns full theme string" {
@@ -892,7 +1088,7 @@ _setup_render_row() {
 }
 
 
-@test "render: highlighted row uses normal weight" {
+@test "render: highlighted row has true-color fg and bg" {
     _setup_render_row
     _tint_render_row 1 1
     [[ "$_tint_picker_buf" == *"38;2;"* ]]
@@ -900,11 +1096,13 @@ _setup_render_row() {
     [[ "$_tint_picker_buf" != *$'\e[2;'* ]]
 }
 
-@test "render: unhighlighted row uses dim" {
+@test "render: unhighlighted row is not dimmed" {
+    # Unhighlighted rows must not apply SGR 2 dim; the fg preview must
+    # show each theme's actual color. Highlight is marker-only.
     _setup_render_row
     _tint_render_row 1 0
     [[ "$_tint_picker_buf" == *"38;2;"* ]]
-    [[ "$_tint_picker_buf" == *$'\e[2;'* ]]
+    [[ "$_tint_picker_buf" != *$'\e[2;'* ]]
 }
 
 @test "render: row 0 default also gets star" {

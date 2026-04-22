@@ -39,15 +39,15 @@
 #   tint_pick "$current"      # Interactive picker → theme name
 #
 # Configuration:
-#   TINT_PALETTE_FILE     Custom palette file (one theme per line)
-#   TINT_PALETTE          Inline palette override (newline-separated)
+#   TINT_PALETTE_DIR      Drop-in theme dir; files appended to built-ins.
+#                         Default: $XDG_CONFIG_HOME/tint/themes
 #
 #   Theme format: name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
 #   (name + bg + fg + 16 ANSI colors, all #RRGGBB hex)
 #
 # =============================================================================
 
-TINT_VERSION="0.19.0"
+TINT_VERSION="0.20.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -95,54 +95,65 @@ rose-pine-dawn:#faf4ed:#575279:#f2e9e1:#b4637a:#286983:#ea9d34:#56949f:#907aa9:#
 solarized-light:#fdf6e3:#657b83:#002b36:#dc322f:#859900:#b58900:#268bd2:#d33682:#2aa198:#eee8d5:#073642:#cb4b16:#586e75:#657b83:#839496:#6c71c4:#93a1a1:#fdf6e3
 '
 
-# _tint_load_palette - Load and validate palette from env, file, or default
-#
-# See header comment re: 'local' keyword compatibility with POSIX shells.
-#
-# Sets: TINT_PALETTE
+# _tint_load_palette - Build TINT_PALETTE from built-ins + $TINT_PALETTE_DIR.
+# Built-ins win on name collision (deduped by name, first wins).
 _tint_load_palette() {
-    # Priority: TINT_PALETTE env > TINT_PALETTE_FILE > default
-    local _tint_palette_source="${_TINT_PALETTE_INPUT:-}"
-    # Check exists (-f), readable (-r), and guard with :- for set -u safety
-    # Use || true so cat failure doesn't abort under set -e
-    if [ -z "$_tint_palette_source" ] && [ -n "${TINT_PALETTE_FILE:-}" ] && [ -f "${TINT_PALETTE_FILE:-}" ] && [ -r "${TINT_PALETTE_FILE:-}" ]; then
-        _tint_palette_source=$(cat "$TINT_PALETTE_FILE") || _tint_palette_source=""
-    fi
-    if [ -z "$_tint_palette_source" ]; then
-        _tint_palette_source="$_TINT_DEFAULT_PALETTE"
+    # TINT_PALETTE_DIR wins (empty = hermetic). Absolute only;
+    # relative would resolve against $PWD.
+    local _tint_theme_dir=""
+    if [ "${TINT_PALETTE_DIR+set}" = "set" ]; then
+        case "$TINT_PALETTE_DIR" in /*|'') _tint_theme_dir="$TINT_PALETTE_DIR" ;; esac
+    else
+        case "${XDG_CONFIG_HOME:-}" in
+            /*) _tint_theme_dir="$XDG_CONFIG_HOME/tint/themes" ;;
+            *) case "${HOME:-}" in
+                /*) _tint_theme_dir="$HOME/.config/tint/themes" ;;
+               esac ;;
+        esac
     fi
 
-    # Filter valid palette lines using sed and grep pipeline
-    # 1. Strip inline comments and whitespace
-    # 2. Remove empty lines and comment-only lines
-    # 3. Keep only valid theme entries (name + 18 hex values)
-    # Note: || true prevents exit under set -e if grep finds no matches
-    TINT_PALETTE=$(printf '%s\n' "$_tint_palette_source" | \
-        sed 's/[[:space:]]#.*//; s/^[[:space:]]*//; s/[[:space:]]*$//' | \
-        grep -v '^$' | \
-        grep -v '^#' | \
-        grep -E '^[a-zA-Z0-9][a-zA-Z0-9_-]*(:#[0-9a-fA-F]{6}){18}$' || true)
+    if [ -n "$_tint_theme_dir" ] && [ -d "$_tint_theme_dir" ] && [ -r "$_tint_theme_dir" ]; then
+        # ls -A (not glob): handles empty dirs, dotfiles, symlinks. Env
+        # sanitization defeats user aliases / QUOTING_STYLE / CLICOLOR_FORCE.
+        set --
+        local _tint_theme_name _tint_theme_path
+        while IFS= read -r _tint_theme_name; do
+            [ -z "$_tint_theme_name" ] && continue
+            _tint_theme_path="$_tint_theme_dir/$_tint_theme_name"
+            if [ -f "$_tint_theme_path" ] && [ -r "$_tint_theme_path" ]; then
+                set -- "$@" "$_tint_theme_path"
+            fi
+        done <<EOF
+$(
+            unset CLICOLOR_FORCE CLICOLOR
+            # LC_ALL=C pins ls sort collation.
+            # shellcheck disable=SC2012  # filenames with newlines unsupported
+            LC_ALL=C QUOTING_STYLE=literal command ls -A "$_tint_theme_dir" 2>/dev/null
+        )
+EOF
+    fi
+
+    # awk required (no fallback). Built-ins on stdin, drop-ins as operands —
+    # awk records don't cross files (POSIX), so a missing trailing newline
+    # can't merge the last entry of one file with the first of the next.
+    TINT_PALETTE=$(printf '%s\n' "$_TINT_DEFAULT_PALETTE" | command awk '
+        BEGIN { FS = ":" }
+        {
+            sub(/[[:space:]]#.*/, "")
+            sub(/^[[:space:]]+/, "")
+            sub(/[[:space:]]+$/, "")
+        }
+        /^[a-zA-Z0-9][a-zA-Z0-9_-]*(:#[0-9a-fA-F]{6}){18}$/ && !seen[$1]++
+    ' - "$@" 2>/dev/null) || true
 }
 
-# Initialize palette
-#
-# Re-sourcing problem: _tint_load_palette sets TINT_PALETTE to filtered output.
-# On re-source, we'd see that value and think it's a user override. To distinguish
-# "user set TINT_PALETTE" from "we set it last time", we track three variables:
-#
-#   _TINT_USER_PALETTE   — snapshot of user's raw override (survives re-source)
-#   _TINT_PALETTE_INPUT  — raw input fed to _tint_load_palette
-#   _TINT_LOADED_PALETTE — our last processed output (for change detection)
-#
-# Update the snapshot when TINT_PALETTE is unset (user cleared it) or differs
-# from our last load (user changed it).
-if [ -z "${TINT_PALETTE+set}" ] || [ "${TINT_PALETTE:-}" != "${_TINT_LOADED_PALETTE:-}" ]; then
-    _TINT_USER_PALETTE="${TINT_PALETTE:-}"
-fi
-_TINT_PALETTE_INPUT="${_TINT_USER_PALETTE:-}"
-TINT_PALETTE=""
 _tint_load_palette
-_TINT_LOADED_PALETTE="$TINT_PALETTE"
+
+# tint_reload_palette - Rebuild TINT_PALETTE after changing
+# TINT_PALETTE_DIR / XDG_CONFIG_HOME / HOME post-source.
+tint_reload_palette() {
+    _tint_load_palette
+}
 
 # =============================================================================
 # Palette Functions
@@ -622,7 +633,6 @@ _tint_render_hint_line() {
 # Accessed via dynamic scoping from the caller. Each row has:
 #   - A 2-char prefix: "> " (cursor), "* " (default/current), or "  "
 #   - A colored background strip with index, hex value, and name
-#   - Highlighted rows are normal weight; others are dim (\e[2m)
 #
 # Reads: _TINT_PICKER_DEFAULT, _TINT_PICKER_TOTAL, _TINT_PICKER_ORIGINAL_BG,
 #   _tint_themes_name[], _tint_themes_bg[], _tint_themes_bg_r/g/b[], _tint_themes_fg_r/g/b[]
@@ -641,9 +651,7 @@ _tint_render_row() {
         hex="${_tint_themes_bg[$row_idx]}"
     fi
 
-    # Build prefix: > for cursor, * for default, space otherwise.
-    # Both row 0 (unchanged) and the matching palette entry get * because
-    # they represent the same selection — choosing either preserves the current color.
+    # Row 0 and the matching palette entry both get * (same color).
     if [ "$highlighted" -eq 1 ]; then
         marker="> "
     elif [ "$row_idx" -eq "$_TINT_PICKER_DEFAULT" ] || { [ "$row_idx" -eq 0 ] && [ "$_TINT_PICKER_DEFAULT" -gt 0 ]; }; then
@@ -652,6 +660,12 @@ _tint_render_row() {
         marker="  "
     fi
 
+    local padded
+    # shellcheck disable=SC3045
+    printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
+    # shellcheck disable=SC3045
+    printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
+
     # hex non-empty means we have color data (RGB arrays populated) —
     # render with colored background. Empty for row 0 when original bg unknown.
     if [ -n "$hex" ]; then
@@ -659,29 +673,11 @@ _tint_render_row() {
         r="${_tint_themes_bg_r[$row_idx]}" g="${_tint_themes_bg_g[$row_idx]}" b="${_tint_themes_bg_b[$row_idx]}"
         # shellcheck disable=SC3054
         local fg_r="${_tint_themes_fg_r[$row_idx]}" fg_g="${_tint_themes_fg_g[$row_idx]}" fg_b="${_tint_themes_fg_b[$row_idx]}"
+        # No SGR 2 dim: would distort each theme's actual fg preview.
         # shellcheck disable=SC3045
-        printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
-        local padded
-        # shellcheck disable=SC3045
-        printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
-        if [ "$highlighted" -eq 1 ]; then
-            # shellcheck disable=SC3045
-            printf -v row '%s\e[38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg_r" "$fg_g" "$fg_b" "$r" "$g" "$b" "$padded"
-        else
-            # shellcheck disable=SC3045
-            printf -v row '%s\e[2;38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg_r" "$fg_g" "$fg_b" "$r" "$g" "$b" "$padded"
-        fi
+        printf -v row '%s\e[38;2;%d;%d;%d;48;2;%d;%d;%dm %s\e[0m' "$marker" "$fg_r" "$fg_g" "$fg_b" "$r" "$g" "$b" "$padded"
     else
-        # shellcheck disable=SC3045
-        printf -v label '%*d.  %s' "$num_width" "$((row_idx + 1))" "$name"
-        local padded
-        # shellcheck disable=SC3045
-        printf -v padded "%-${_TINT_PICKER_ROW_WIDTH}s" "$label"
-        if [ "$highlighted" -eq 1 ]; then
-            row="${marker}${padded}"
-        else
-            row="${marker}\e[2m${padded}\e[0m"
-        fi
+        row="${marker}${padded}"
     fi
     # shellcheck disable=SC3054,SC3024,SC3003
     _tint_picker_buf+=$'\r\e[K'"${row}"$'\n'
@@ -1539,8 +1535,11 @@ SHELL INTEGRATION
     Place a .tint in ~ for a global default.
 
 CONFIGURATION
-    Custom palette file:  export TINT_PALETTE_FILE=~/.config/tint/palette.conf
-    Inline palette:       export TINT_PALETTE=$'name:#bg:#fg:#00:...:#15'
+    User themes:          $XDG_CONFIG_HOME/tint/themes/
+                          (or $TINT_PALETTE_DIR to override location)
+
+    Drop any file with theme entries into the directory. Files are read
+    in alphabetical order and appended to the built-in palette.
 
     Theme format (one per line):
         name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
@@ -1589,10 +1588,8 @@ _tint_hook() {
         _TINT_HOOK_COLOR=""
         return "$_tint_ret"
     fi
-    # Cache by raw .tint value to skip redundant tint calls. This means
-    # palette changes (e.g., TINT_PALETTE modified by direnv) won't take
-    # effect until the .tint value itself changes or the user runs tint
-    # manually. Hashing the palette on every prompt would be too expensive.
+    # Cache by .tint value. Theme-file edits under TINT_PALETTE_DIR
+    # don't invalidate; re-run `tint <name>` manually.
     if [ "$_tint_color" = "${_TINT_HOOK_COLOR:-}" ]; then
         return "$_tint_ret"
     fi
@@ -1654,10 +1651,8 @@ _tint_hook() {
         _TINT_HOOK_COLOR=""
         return
     fi
-    # Cache by raw .tint value to skip redundant tint calls. This means
-    # palette changes (e.g., TINT_PALETTE modified by direnv) won't take
-    # effect until the .tint value itself changes or the user runs tint
-    # manually. Hashing the palette on every prompt would be too expensive.
+    # Cache by .tint value. Theme-file edits under TINT_PALETTE_DIR
+    # don't invalidate; re-run `tint <name>` manually.
     if [ "$_tint_color" = "${_TINT_HOOK_COLOR:-}" ]; then
         return
     fi
