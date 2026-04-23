@@ -133,7 +133,7 @@ $(
             unset CLICOLOR_FORCE CLICOLOR
             # LC_ALL=C pins ls sort collation.
             # shellcheck disable=SC2012  # filenames with newlines unsupported
-            LC_ALL=C QUOTING_STYLE=literal command ls -A "$_tint_theme_dir"
+            LC_ALL=C QUOTING_STYLE=literal command ls -1A "$_tint_theme_dir"
         )
 EOF
     fi

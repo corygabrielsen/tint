@@ -601,6 +601,18 @@ INNEREOF
     [ "$status" -eq 0 ]
 }
 
+@test "sourcing tint preserves caller's positional parameters" {
+    # The loader uses `set --` inside _tint_load_palette to accumulate
+    # theme file paths. Function-scoped positional params must not leak
+    # to the shell that sourced tint. Verified across bash, dash, zsh.
+    for sh in bash dash /usr/bin/zsh; do
+        command -v "$sh" >/dev/null 2>&1 || continue
+        run "$sh" -c "set -- outer1 outer2 outer3; . '$DIR/tint'; printf '%d|%s|%s|%s' \"\$#\" \"\$1\" \"\$2\" \"\$3\""
+        [ "$status" -eq 0 ]
+        [ "$output" = "3|outer1|outer2|outer3" ]
+    done
+}
+
 @test "TINT_PALETTE_DIR follows symlinked directory" {
     # Loader must follow a symlinked theme dir (common dotfile pattern).
     local full="$ANSI16"
