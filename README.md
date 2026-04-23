@@ -31,6 +31,8 @@ curl -fsSL https://github.com/corygabrielsen/tint/releases/latest/download/tint 
 
 Make sure `~/.local/bin` is in your `PATH`.
 
+Requires `awk` (for palette parsing) and a terminal that supports OSC 11 background-color sequences. Both are standard on modern systems.
+
 Verify:
 
 ```bash
@@ -75,32 +77,24 @@ Each theme is a name followed by 18 hex colors: background, foreground, and ANSI
 name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
 ```
 
-Create a palette file at `~/.config/tint/palette.conf`:
+Drop theme files into `$XDG_CONFIG_HOME/tint/themes` (commonly `~/.config/tint/themes` when `XDG_CONFIG_HOME` is unset; any filename works):
 
-```
+```bash
+mkdir -p ~/.config/tint/themes
+cat > ~/.config/tint/themes/mine.theme <<'EOF'
 mytheme:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5
+EOF
+tint mytheme
 ```
 
-Then:
-
-```bash
-export TINT_PALETTE_FILE=~/.config/tint/palette.conf
-tint
-```
-
-Or inline:
-
-```bash
-export TINT_PALETTE='mytheme:#1a1b26:#c0caf5:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#a9b1d6:#414868:#f7768e:#9ece6a:#e0af68:#7aa2f7:#bb9af7:#7dcfff:#c0caf5'
-tint
-```
+Each file can contain one or more theme entries, one per line. Files are read in alphabetical order and appended to the built-in palette. Pick unique names for your drop-in themes — built-ins win lookups on name collision. Set `TINT_PALETTE_DIR` to override the `$XDG_CONFIG_HOME/tint/themes` default.
 
 ## Library Usage
 
-Source `tint` to use its functions in scripts:
+Source `tint` to use its functions in scripts. Use `.` for POSIX compatibility, or `source` in bash/zsh:
 
 ```bash
-source /path/to/tint
+. /path/to/tint
 
 tint_supports_color       # Check if terminal supports OSC color sequences
 tint_resolve "dracula"    # Name → full theme string, hex → expanded #rrggbb
@@ -110,6 +104,7 @@ tint_set "$theme_string"  # Set full theme (bg + fg + 16 ANSI colors)
 tint_reset                # Reset to terminal default
 tint_pick "$current"      # Interactive picker → selected theme name
 tint_list                 # Print all theme names
+tint_reload_palette       # Rebuild TINT_PALETTE after changing TINT_PALETTE_DIR / XDG_CONFIG_HOME / HOME
 ```
 
 ## Shell Integration
