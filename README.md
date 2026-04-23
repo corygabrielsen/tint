@@ -31,6 +31,8 @@ curl -fsSL https://github.com/corygabrielsen/tint/releases/latest/download/tint 
 
 Make sure `~/.local/bin` is in your `PATH`.
 
+Requires `awk` (for palette parsing) and a terminal that supports OSC 11 background-color sequences. Both are standard on modern systems.
+
 Verify:
 
 ```bash
@@ -89,10 +91,10 @@ Each file can contain one or more theme entries, one per line. Files are read in
 
 ## Library Usage
 
-Source `tint` to use its functions in scripts:
+Source `tint` to use its functions in scripts. Use `.` for POSIX compatibility, or `source` in bash/zsh:
 
 ```bash
-source /path/to/tint
+. /path/to/tint
 
 tint_supports_color       # Check if terminal supports OSC color sequences
 tint_resolve "dracula"    # Name → full theme string, hex → expanded #rrggbb

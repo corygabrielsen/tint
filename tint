@@ -12,6 +12,9 @@
 #     tint <theme>    tint completions    tint hook    tint reset
 #     tint --help     tint --list
 #
+#   Runtime deps: awk (required — sole palette parser), and a terminal
+#   supporting OSC 11 (background-color set/query).
+#
 #   Note: We use 'local' throughout. While not in POSIX spec, it's supported by
 #   dash, ash, busybox sh, and every /bin/sh in practical use. See:
 #   https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
@@ -32,7 +35,7 @@
 #   tint -v, --version        Show version
 #
 # Library usage:
-#   source /path/to/tint
+#   . /path/to/tint               # `source` also works in bash/zsh
 #   tint_supports_color       # Check if terminal supports OSC color sequences
 #   tint_lookup "dracula"     # Palette name → theme string
 #   tint_resolve "dracula"    # Name → theme string, hex → expanded #rrggbb
