@@ -102,6 +102,7 @@ tint_set "$theme_string"  # Set full theme (bg + fg + 16 ANSI colors)
 tint_reset                # Reset to terminal default
 tint_pick "$current"      # Interactive picker → selected theme name
 tint_list                 # Print all theme names
+tint_reload_palette       # Rebuild TINT_PALETTE after changing TINT_PALETTE_DIR / XDG_CONFIG_HOME / HOME
 ```
 
 ## Shell Integration
