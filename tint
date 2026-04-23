@@ -33,9 +33,12 @@
 #
 # Library usage:
 #   source /path/to/tint
+#   tint_supports_color       # Check if terminal supports OSC color sequences
+#   tint_lookup "dracula"     # Palette name → theme string
 #   tint_resolve "dracula"    # Name → theme string, hex → expanded #rrggbb
 #   tint_set "$theme_string"  # Set theme (bg + fg + 16 ANSI colors)
 #   tint_reset                # Reset to terminal default
+#   tint_list                 # Print all theme names
 #   tint_pick "$current"      # Interactive picker → theme name
 #   tint_reload_palette       # Rebuild TINT_PALETTE after changing
 #                             #   TINT_PALETTE_DIR / XDG_CONFIG_HOME / HOME
@@ -130,7 +133,7 @@ $(
             unset CLICOLOR_FORCE CLICOLOR
             # LC_ALL=C pins ls sort collation.
             # shellcheck disable=SC2012  # filenames with newlines unsupported
-            LC_ALL=C QUOTING_STYLE=literal command ls -A "$_tint_theme_dir" 2>/dev/null
+            LC_ALL=C QUOTING_STYLE=literal command ls -A "$_tint_theme_dir"
         )
 EOF
     fi
