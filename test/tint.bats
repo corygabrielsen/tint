@@ -601,6 +601,23 @@ INNEREOF
     [ "$status" -eq 0 ]
 }
 
+@test "TINT_PALETTE_DIR handles filenames with shell metacharacters" {
+    # POSIX heredoc expansion is one-pass: the loader's `<<EOF ... $(ls) EOF`
+    # reads ls output verbatim, so a filename like 'foo$(date).theme' is not
+    # re-interpreted by the shell. Lock that in with executable filenames.
+    local full="$ANSI16"
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    printf '%s\n' "injectok:#abcdef${full}" > "$tmpdir/tricky\$(date).theme"
+    printf '%s\n' "backtickok:#abcdef${full}" > "$tmpdir/b\`id\`.theme"
+    printf '%s\n' "dollarok:#abcdef${full}" > "$tmpdir/name\$VAR.theme"
+    TINT_PALETTE_DIR="$tmpdir" source "$DIR/tint"
+    rm -rf "$tmpdir"
+    [[ "$TINT_PALETTE" =~ "injectok:#abcdef:" ]]
+    [[ "$TINT_PALETTE" =~ "backtickok:#abcdef:" ]]
+    [[ "$TINT_PALETTE" =~ "dollarok:#abcdef:" ]]
+}
+
 @test "sourcing tint preserves caller's positional parameters" {
     # The loader uses `set --` inside _tint_load_palette to accumulate
     # theme file paths. Function-scoped positional params must not leak

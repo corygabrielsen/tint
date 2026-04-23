@@ -121,8 +121,11 @@ _tint_load_palette() {
     fi
 
     if [ -n "$_tint_theme_dir" ] && [ -d "$_tint_theme_dir" ] && [ -r "$_tint_theme_dir" ]; then
-        # ls -A (not glob): handles empty dirs, dotfiles, symlinks. Env
+        # ls -1A (not glob): handles empty dirs, dotfiles, symlinks. Env
         # sanitization defeats user aliases / QUOTING_STYLE / CLICOLOR_FORCE.
+        # Heredoc expansion is one-pass per POSIX: $() output below is read
+        # verbatim, so filenames containing $(), backticks, or $VAR aren't
+        # re-interpreted by the shell.
         set --
         local _tint_theme_name _tint_theme_path
         while IFS= read -r _tint_theme_name; do
