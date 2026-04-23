@@ -77,7 +77,7 @@ Each theme is a name followed by 18 hex colors: background, foreground, and ANSI
 name:#bg:#fg:#00:#01:#02:#03:#04:#05:#06:#07:#08:#09:#10:#11:#12:#13:#14:#15
 ```
 
-Drop theme files into `~/.config/tint/themes/` — or `$XDG_CONFIG_HOME/tint/themes` if `XDG_CONFIG_HOME` is set (any filename works):
+Drop theme files into `$XDG_CONFIG_HOME/tint/themes` (commonly `~/.config/tint/themes` when `XDG_CONFIG_HOME` is unset; any filename works):
 
 ```bash
 mkdir -p ~/.config/tint/themes
