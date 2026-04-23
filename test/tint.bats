@@ -38,20 +38,25 @@ _load_tint_with_themes() {
 # unset so the var under test is the active config source.
 _assert_relative_path_ignored() {
     local var="$1" val="$2" subpath="$3"
-    local fakethemes
-    fakethemes=$(mktemp -d)
-    mkdir -p "$fakethemes/$subpath"
-    echo "shouldnotload:#abcdef${ANSI16}" > "$fakethemes/$subpath/x.theme"
-    cd "$fakethemes" || return 1
-    case "$var" in
-        XDG_CONFIG_HOME) unset TINT_PALETTE_DIR ;;
-        HOME)            unset TINT_PALETTE_DIR XDG_CONFIG_HOME ;;
-    esac
-    # shellcheck disable=SC2163
-    export "$var=$val"
-    source "$DIR/tint"
-    rm -rf "$fakethemes"
-    [[ ! "$TINT_PALETTE" =~ "shouldnotload:" ]]
+    # Subshell: cd and exports can't leak to the test process; rm -rf
+    # can't leave the caller in a deleted CWD.
+    (
+        local fakethemes
+        fakethemes=$(mktemp -d)
+        mkdir -p "$fakethemes/$subpath"
+        echo "shouldnotload:#abcdef${ANSI16}" > "$fakethemes/$subpath/x.theme"
+        cd "$fakethemes" || return 1
+        # Neutralize the full XDG/HOME fallback chain so only $var under
+        # test is an active config source. Otherwise a real
+        # ~/.config/tint/themes on the dev machine could leak in.
+        unset TINT_PALETTE_DIR XDG_CONFIG_HOME
+        export HOME=/nonexistent-tint-test-home
+        # shellcheck disable=SC2163
+        export "$var=$val"
+        source "$DIR/tint"
+        rm -rf "$fakethemes"
+        [[ ! "$TINT_PALETTE" =~ "shouldnotload:" ]]
+    )
 }
 
 # Derive palette constants so picker tests don't hardcode theme names or counts.
