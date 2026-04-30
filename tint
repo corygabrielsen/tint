@@ -974,8 +974,13 @@ _tint_load_palette_arrays() {
         # shellcheck disable=SC3054,SC3057,SC3052
         _tint_themes_bg_b[i]=$((16#${bg:5:2}))
         # printf -v: bash builtin (no fork). %02x always produces lowercase.
+        # Bash 3.2 (macOS) rejects array-element targets for printf -v, so
+        # write to a scalar then assign — works on bash 3.2+.
+        local _bg_hex
         # shellcheck disable=SC3045,SC3054
-        printf -v "_tint_themes_bg[$i]" '#%02x%02x%02x' "${_tint_themes_bg_r[$i]}" "${_tint_themes_bg_g[$i]}" "${_tint_themes_bg_b[$i]}"
+        printf -v _bg_hex '#%02x%02x%02x' "${_tint_themes_bg_r[$i]}" "${_tint_themes_bg_g[$i]}" "${_tint_themes_bg_b[$i]}"
+        # shellcheck disable=SC3054
+        _tint_themes_bg[i]="$_bg_hex"
         # Lowercase fg hex (no fork). _fg_raw already validated above.
         # printf %02x produces lowercase hex, matching the bg path above.
         # shellcheck disable=SC3054,SC3057,SC3052
@@ -984,8 +989,11 @@ _tint_load_palette_arrays() {
         _tint_themes_fg_g[i]=$((16#${_fg_raw:3:2}))
         # shellcheck disable=SC3054,SC3057,SC3052
         _tint_themes_fg_b[i]=$((16#${_fg_raw:5:2}))
+        local _fg_hex
         # shellcheck disable=SC3045,SC3054
-        printf -v "_tint_themes_fg[$i]" '#%02x%02x%02x' "${_tint_themes_fg_r[$i]}" "${_tint_themes_fg_g[$i]}" "${_tint_themes_fg_b[$i]}"
+        printf -v _fg_hex '#%02x%02x%02x' "${_tint_themes_fg_r[$i]}" "${_tint_themes_fg_g[$i]}" "${_tint_themes_fg_b[$i]}"
+        # shellcheck disable=SC3054
+        _tint_themes_fg[i]="$_fg_hex"
     done <<EOF
 $TINT_PALETTE
 EOF
@@ -1605,8 +1613,11 @@ _tint_hook() {
         return "$_tint_ret"
     fi
     _TINT_HOOK_COLOR="$_tint_color"
-    # Uses `tint` by name (standard convention; cf. direnv, zoxide, starship)
-    command tint "$_tint_color" >/dev/null 2>&1 || true
+    # Uses `tint` by name (standard convention; cf. direnv, zoxide, starship).
+    # Subshell isolates errexit: bash 3.2 (macOS) propagates a non-zero exit
+    # through `|| true` when the failing cmd is inside a function called
+    # under `set -e`.
+    ( command tint "$_tint_color" >/dev/null 2>&1 ) || true
     return "$_tint_ret"
 }
 # Prepend to PROMPT_COMMAND, handling both string and array forms (Bash 5.1+)
@@ -1668,8 +1679,11 @@ _tint_hook() {
         return
     fi
     _TINT_HOOK_COLOR="$_tint_color"
-    # Uses `tint` by name (standard convention; cf. direnv, zoxide, starship)
-    command tint "$_tint_color" >/dev/null 2>&1 || true
+    # Uses `tint` by name (standard convention; cf. direnv, zoxide, starship).
+    # Subshell isolates errexit: bash 3.2 (macOS) propagates a non-zero exit
+    # through `|| true` when the failing cmd is inside a function called
+    # under `set -e`.
+    ( command tint "$_tint_color" >/dev/null 2>&1 ) || true
 }
 if [[ -z "${chpwd_functions[(r)_tint_hook]-}" ]]; then
     chpwd_functions+=(_tint_hook)

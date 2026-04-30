@@ -1683,7 +1683,7 @@ _pick() {
         echo \$_TINT_PICKER_RENDERED_ROWS
     "
     [ "$status" -eq 0 ]
-    [ "${lines[-1]}" = "0" ]
+    [ "${lines[$((${#lines[@]}-1))]}" = "0" ]
 }
 
 @test "picker: many keypresses do not hang under PTY backpressure" {
@@ -1969,7 +1969,7 @@ PYEOF
         echo \$?
     "
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "1" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "1" ]]
 }
 
 @test "PROMPT_COMMAND is idempotent" {
@@ -1980,7 +1980,7 @@ PYEOF
     "
     [ "$status" -eq 0 ]
     local count
-    count=$(echo "${lines[-1]}" | grep -o '_tint_hook' | wc -l)
+    count=$(echo "${lines[$((${#lines[@]}-1))]}" | grep -o '_tint_hook' | wc -l)
     [ "$count" -eq 1 ]
 }
 
@@ -2169,7 +2169,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" =~ ^[[:space:]]*1$ ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" =~ ^[[:space:]]*1$ ]]
 }
 
 @test ".tint with reset calls tint reset" {
@@ -2195,7 +2195,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "reset" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "reset" ]]
 }
 
 @test "hook strips inline comments" {
@@ -2221,7 +2221,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "solarized-dark" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "solarized-dark" ]]
 }
 
 @test "hook skips full-line comments" {
@@ -2247,7 +2247,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "solarized-dark" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "solarized-dark" ]]
 }
 
 @test "hook treats hex color as value not comment" {
@@ -2273,7 +2273,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "#002b36" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "#002b36" ]]
 }
 
 @test "hook treats 3-digit hex color as value not comment" {
@@ -2299,7 +2299,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "#abc" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "#abc" ]]
 }
 
 @test "hook ignores comment-only .tint file" {
@@ -2351,7 +2351,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "#002b36" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "#002b36" ]]
 }
 
 @test "PROMPT_COMMAND array form preserved" {
@@ -2397,7 +2397,7 @@ STUB
     rm -rf "$tmpdir" "$nocolor"
     [ "$status" -eq 0 ]
     # Should have 2 calls: initial + reapply after cache clear
-    [[ "${lines[-1]}" =~ ^[[:space:]]*2$ ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" =~ ^[[:space:]]*2$ ]]
 }
 
 @test "bash hook works under set -u" {
@@ -2432,7 +2432,7 @@ STUB
     "
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "${lines[-1]}" = "solarized-dark" ]]
+    [[ "${lines[$((${#lines[@]}-1))]}" = "solarized-dark" ]]
 }
 
 @test "hook survives set -e with empty .tint" {
