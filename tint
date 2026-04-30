@@ -55,7 +55,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.20.1"
+TINT_VERSION="0.20.2"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -828,12 +828,20 @@ _tint_render_changed_rows() {
 # Reads: _TINT_PICKER_SCROLLED, _TINT_PICKER_OLD_IDX
 _tint_render_cursor_move() {
     _tint_apply_preview_color
-    # || true: render is non-fatal; prevents set -e abort on signal race
+    # Render is non-fatal (signal races shouldn't abort the picker). Plain
+    # `cmd || true` inside a function called under `set -e` doesn't suppress
+    # errexit on bash 3.2 (macOS). Save and restore the errexit option around
+    # the render calls instead — works on bash 3.2 and 4+.
+    local _e=0
+    case $- in *e*) _e=1 ;; esac
+    set +e
     if [ "$_TINT_PICKER_SCROLLED" -eq 1 ]; then
-        _tint_render_all || true
+        _tint_render_all
     else
-        _tint_render_changed_rows "$_TINT_PICKER_OLD_IDX" || true
+        _tint_render_changed_rows "$_TINT_PICKER_OLD_IDX"
     fi
+    [ "$_e" = "1" ] && set -e
+    return 0
 }
 
 # _tint_handle_resize - Recalculate layout and redraw after terminal resize
