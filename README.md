@@ -65,7 +65,9 @@ tint -v, --version    # Show version
 
 ## Built-in Themes
 
-### Named (33)
+### Curated (33)
+
+Hand-picked from popular community themes.
 
 **Dark:** `apprentice` `ayu` `campbell` `catppuccin-frappe` `catppuccin-macchiato` `catppuccin-mocha` `cobalt2` `dracula` `everforest-dark` `github` `gruvbox-dark` `horizon` `kanagawa` `linux-console` `material` `monokai` `night-owl` `nord` `onedark` `palenight` `putty` `rose-pine` `rose-pine-moon` `solarized-dark` `synthwave` `tango` `tokyo`
 
