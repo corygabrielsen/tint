@@ -1691,6 +1691,7 @@ _pick() {
     # the master side isn't draining continuously, blocking the child's
     # write and preventing it from reading further keys — deadlock.
     # Multiple wrapping navigations exercise enough redraws to test backpressure.
+    command -v timeout >/dev/null || skip "timeout(1) not installed (brew install coreutils on macOS)"
     run timeout 5 python3 "$DIR/test/pty_helper.py" \
         down down down down down down down down down down \
         down down down down down enter
@@ -1702,6 +1703,7 @@ _pick() {
     # Resize the PTY mid-session (10 rows → triggers recalculation of
     # _TINT_PICKER_VISIBLE), then navigate and select to verify the picker
     # survived the signal and redrew correctly.
+    command -v timeout >/dev/null || skip "timeout(1) not installed (brew install coreutils on macOS)"
     run timeout 10 python3 "$DIR/test/pty_helper.py" \
         down resize:10x80 down enter
     [ "$status" -eq 0 ]
@@ -1729,6 +1731,7 @@ _pick() {
     # Note: < /dev/null only redirects stdin; /dev/tty is still accessible
     # from an interactive terminal. Use setsid to detach from the controlling
     # terminal so /dev/tty becomes unavailable.
+    command -v setsid >/dev/null || skip "setsid(1) not installed (brew install util-linux on macOS)"
     run setsid bash -c "source '$DIR/tint' && tint_pick"
     [ "$status" -ne 0 ]
     [[ "$output" =~ "requires a terminal" ]]
@@ -1778,16 +1781,27 @@ else:
     os.close(slave)
     time.sleep(0.1)
     os.write(master, b'q')
-    _, status = os.waitpid(pid, 0)
     out = b''
     while True:
-        r, _, _ = select.select([master], [], [], 0.02)
-        if not r: break
-        try:
-            c = os.read(master, 4096)
-            if not c: break
-            out += c
-        except OSError: break
+        r, _, _ = select.select([master], [], [], 0.05)
+        if r:
+            try:
+                c = os.read(master, 4096)
+                if not c: break
+                out += c
+            except OSError: break
+        p2, status = os.waitpid(pid, os.WNOHANG)
+        if p2 != 0:
+            # Child exited — drain remaining buffered output, then stop.
+            while True:
+                r, _, _ = select.select([master], [], [], 0.02)
+                if not r: break
+                try:
+                    c = os.read(master, 4096)
+                    if not c: break
+                    out += c
+                except OSError: break
+            break
     print(out.decode('utf-8', 'replace'))
 PYEOF
 )
@@ -1816,16 +1830,27 @@ else:
     os.write(master, b'\x1b[C')
     time.sleep(0.02)
     os.write(master, b'\r')
-    _, status = os.waitpid(pid, 0)
     out = b''
     while True:
-        r, _, _ = select.select([master], [], [], 0.02)
-        if not r: break
-        try:
-            c = os.read(master, 4096)
-            if not c: break
-            out += c
-        except OSError: break
+        r, _, _ = select.select([master], [], [], 0.05)
+        if r:
+            try:
+                c = os.read(master, 4096)
+                if not c: break
+                out += c
+            except OSError: break
+        p2, status = os.waitpid(pid, os.WNOHANG)
+        if p2 != 0:
+            # Child exited — drain remaining buffered output, then stop.
+            while True:
+                r, _, _ = select.select([master], [], [], 0.02)
+                if not r: break
+                try:
+                    c = os.read(master, 4096)
+                    if not c: break
+                    out += c
+                except OSError: break
+            break
     print(out.decode('utf-8', 'replace'))
 PYEOF
 )
@@ -1865,16 +1890,27 @@ else:
     os.write(master, b'\x1b[C')
     time.sleep(0.02)
     os.write(master, b'\r')
-    _, status = os.waitpid(pid, 0)
     out = b''
     while True:
-        r, _, _ = select.select([master], [], [], 0.02)
-        if not r: break
-        try:
-            c = os.read(master, 4096)
-            if not c: break
-            out += c
-        except OSError: break
+        r, _, _ = select.select([master], [], [], 0.05)
+        if r:
+            try:
+                c = os.read(master, 4096)
+                if not c: break
+                out += c
+            except OSError: break
+        p2, status = os.waitpid(pid, os.WNOHANG)
+        if p2 != 0:
+            # Child exited — drain remaining buffered output, then stop.
+            while True:
+                r, _, _ = select.select([master], [], [], 0.02)
+                if not r: break
+                try:
+                    c = os.read(master, 4096)
+                    if not c: break
+                    out += c
+                except OSError: break
+            break
     print(out.decode('utf-8', 'replace'))
 PYEOF
 )
