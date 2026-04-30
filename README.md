@@ -65,9 +65,27 @@ tint -v, --version    # Show version
 
 ## Built-in Themes
 
-**Dark:** `apprentice` `ayu` `campbell` `catppuccin-frappe` `catppuccin-macchiato` `catppuccin-mocha` `cobalt` `dracula` `everforest-dark` `github` `gruvbox-dark` `horizon` `kanagawa` `linux-console` `material` `monokai` `night-owl` `nord` `onedark` `palenight` `putty` `rose-pine` `rose-pine-moon` `solarized-dark` `synthwave` `tango` `tokyo`
+### Named (33)
+
+**Dark:** `apprentice` `ayu` `campbell` `catppuccin-frappe` `catppuccin-macchiato` `catppuccin-mocha` `cobalt2` `dracula` `everforest-dark` `github` `gruvbox-dark` `horizon` `kanagawa` `linux-console` `material` `monokai` `night-owl` `nord` `onedark` `palenight` `putty` `rose-pine` `rose-pine-moon` `solarized-dark` `synthwave` `tango` `tokyo`
 
 **Light:** `catppuccin-latte` `everforest-light` `gruvbox-light` `onelight` `rose-pine-dawn` `solarized-light`
+
+### Rainbow Wheel (144)
+
+24 hues × 6 lightness/saturation tiers. Hue order: red, vermilion, orange, amber, yellow, lime, chartreuse, harlequin, green, emerald, spring-green, aquamarine, cyan, sky-blue, azure, cobalt, blue, indigo, violet, purple, magenta, fuchsia, rose, crimson.
+
+**Deep** (L=0.20, S=0.35 — near-black with strong hue): `deep-red` `deep-vermilion` `deep-orange` `deep-amber` `deep-yellow` `deep-lime` `deep-chartreuse` `deep-harlequin` `deep-green` `deep-emerald` `deep-spring-green` `deep-aquamarine` `deep-cyan` `deep-sky-blue` `deep-azure` `deep-cobalt` `deep-blue` `deep-indigo` `deep-violet` `deep-purple` `deep-magenta` `deep-fuchsia` `deep-rose` `deep-crimson`
+
+**Dark** (L=0.35, S=0.35 — between deep and base): `dark-red` `dark-vermilion` `dark-orange` `dark-amber` `dark-yellow` `dark-lime` `dark-chartreuse` `dark-harlequin` `dark-green` `dark-emerald` `dark-spring-green` `dark-aquamarine` `dark-cyan` `dark-sky-blue` `dark-azure` `dark-cobalt` `dark-blue` `dark-indigo` `dark-violet` `dark-purple` `dark-magenta` `dark-fuchsia` `dark-rose` `dark-crimson`
+
+**Muted** (L=0.50, S=0.35 — base canonical hue, no prefix): `red` `vermilion` `orange` `amber` `yellow` `lime` `chartreuse` `harlequin` `green` `emerald` `spring-green` `aquamarine` `cyan` `sky-blue` `azure` `cobalt` `blue` `indigo` `violet` `purple` `magenta` `fuchsia` `rose` `crimson`
+
+**Light** (L=0.65, S=0.35 — lighter hue, dark text required): `light-red` `light-vermilion` `light-orange` `light-amber` `light-yellow` `light-lime` `light-chartreuse` `light-harlequin` `light-green` `light-emerald` `light-spring-green` `light-aquamarine` `light-cyan` `light-sky-blue` `light-azure` `light-cobalt` `light-blue` `light-indigo` `light-violet` `light-purple` `light-magenta` `light-fuchsia` `light-rose` `light-crimson`
+
+**Pale** (L=0.80, S=0.35 — pastel daytime, dark text required): `pale-red` `pale-vermilion` `pale-orange` `pale-amber` `pale-yellow` `pale-lime` `pale-chartreuse` `pale-harlequin` `pale-green` `pale-emerald` `pale-spring-green` `pale-aquamarine` `pale-cyan` `pale-sky-blue` `pale-azure` `pale-cobalt` `pale-blue` `pale-indigo` `pale-violet` `pale-purple` `pale-magenta` `pale-fuchsia` `pale-rose` `pale-crimson`
+
+**Neon** (L=0.50, S=0.80 — high-saturation siblings of muted): `neon-red` `neon-vermilion` `neon-orange` `neon-amber` `neon-yellow` `neon-lime` `neon-chartreuse` `neon-harlequin` `neon-green` `neon-emerald` `neon-spring-green` `neon-aquamarine` `neon-cyan` `neon-sky-blue` `neon-azure` `neon-cobalt` `neon-blue` `neon-indigo` `neon-violet` `neon-purple` `neon-magenta` `neon-fuchsia` `neon-rose` `neon-crimson`
 
 ## Custom Palette
 
