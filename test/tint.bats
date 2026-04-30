@@ -485,7 +485,7 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "catppuccin-latte:#eff1f5:" ]]
     [[ "$TINT_PALETTE" =~ "catppuccin-macchiato:#24273a:" ]]
     [[ "$TINT_PALETTE" =~ "catppuccin-mocha:#1e1e2e:" ]]
-    [[ "$TINT_PALETTE" =~ "cobalt:#132738:" ]]
+    [[ "$TINT_PALETTE" =~ "cobalt2:#132738:" ]]
     [[ "$TINT_PALETTE" =~ "dracula:#282a36:" ]]
     [[ "$TINT_PALETTE" =~ "everforest-dark:#2d353b:" ]]
     [[ "$TINT_PALETTE" =~ "everforest-light:#fdf6e3:" ]]
@@ -511,7 +511,7 @@ INNEREOF
     [[ "$TINT_PALETTE" =~ "synthwave:#262335:" ]]
     [[ "$TINT_PALETTE" =~ "tango:#2e3436:" ]]
     [[ "$TINT_PALETTE" =~ "tokyo:#1a1b26:" ]]
-    [ "$(_tint_palette_count)" -eq 33 ]
+    [ "$(_tint_palette_count)" -eq 177 ]
 }
 
 @test "palette rejects hyphen-prefixed names" {
