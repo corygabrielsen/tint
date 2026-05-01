@@ -566,8 +566,8 @@ _tint_fg_for_bg() {
 #   ───────────────────────────────  ────  ───────────────  ───────────────────────────────────────────────────
 #   _TINT_PICKER_IDX                 int   cursor pos       init_picker, find_default_index, model_move_cursor
 #   _TINT_PICKER_OLD_IDX             int   prev cursor pos  init_picker, model_move_cursor
-#   _TINT_PICKER_DEFAULT             int   star marker pos  init_picker, find_default_index
-#   _TINT_PICKER_ORIGINAL_THEME_IDX  int   original theme   init_picker (auto-detect from queried bg)
+#   _TINT_PICKER_DEFAULT             int   star marker pos  find_default_index (caller arg) | init_picker (auto-detect fallback)
+#   _TINT_PICKER_ORIGINAL_THEME_IDX  int   original theme   init_picker (auto-detect from queried bg + fg; 0 if ambiguous)
 #   _TINT_PICKER_TOTAL               int   entry count      load_palette_arrays
 #   _TINT_PICKER_VISIBLE             int   window rows      init_picker
 #   _TINT_PICKER_KEY                 str   last keypress    read_key
@@ -1207,8 +1207,9 @@ _tint_compute_unchanged_entry() {
 
 # _tint_find_default_index <current> - Match current value to a palette index
 #
-# Accepts a theme name or #RRGGBB hex. Names match against _tint_themes_name[];
-# hex values match against _tint_themes_bg[] (bg color).
+# Accepts a theme name, #RRGGBB hex, or full theme string (#bg:#fg:#00:...).
+# Names match _tint_themes_name[]; hex/full strings match _tint_themes_bg[],
+# with fg as a tiebreaker when a full theme string is provided.
 #
 # Sets: _TINT_PICKER_IDX, _TINT_PICKER_DEFAULT (if a match is found)
 # Reads: _tint_palette_count, _tint_themes_name[], _tint_themes_bg[] (via dynamic scoping)
@@ -1390,7 +1391,9 @@ _tint_init_picker() {
     _TINT_PICKER_PREVIEWED=0
 
     _tint_compute_unchanged_entry
-    # _TINT_PICKER_DEFAULT: visual star marker + initial cursor (from explicit arg)
+    # _TINT_PICKER_DEFAULT controls the star marker. _TINT_PICKER_IDX (initial
+    # cursor) follows it ONLY when the caller's <current> arg matches; the
+    # auto-detect fallback below sets the star but leaves the cursor at 0.
     _tint_find_default_index "${1:-}"
     # _TINT_PICKER_ORIGINAL_THEME_IDX: theme matching the terminal's current colors.
     # Auto-detected from actual terminal state, independent of the caller's hint.
