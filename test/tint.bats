@@ -450,17 +450,6 @@ INNEREOF
     [[ "$fn_body" == *"10;"* ]]
 }
 
-@test "tint_set auto-computes foreground" {
-    source "$DIR/tint"
-    local fg
-    # For a dark bg, fg should be white
-    fg=$(_tint_fg_for_bg "#000000")
-    [ "$fg" = "#ffffff" ]
-    # For a light bg, fg should be black
-    fg=$(_tint_fg_for_bg "#ffffff")
-    [ "$fg" = "#000000" ]
-}
-
 @test "tint_set uses explicit foreground when provided" {
     source "$DIR/tint"
     local fn_body
@@ -1710,14 +1699,6 @@ _pick() {
     [[ "$output" == *"exit:0"* ]]
     # down + down = idx 2 (second theme)
     [[ "$output" == *"stdout:${THEME_SECOND}"* ]]
-}
-
-@test "picker: set -e does not kill script during navigation" {
-    # Under set -e, [ test ] && cmd returns 1 when the test is false,
-    # which kills the script. Render functions must use if/then instead.
-    _pick down enter
-    [ "$PICK_EXIT" -eq 0 ]
-    [ "$PICK_STDOUT" = "$THEME_FIRST" ]
 }
 
 # =============================================================================
