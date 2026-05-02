@@ -2575,6 +2575,10 @@ STUB
 }
 
 @test "hook prints to stderr when TINT_HOOK_VERBOSE=1" {
+    # Capture stderr to a file so we can assert *which channel* the message
+    # went to. Stdout is captured by `run` as $output. The hook's contract
+    # is "verbose message on stderr, never stdout" — merging via `2>&1`
+    # would let an accidental stdout regression slip past.
     local tmpdir
     tmpdir=$(mktemp -d)
     echo "dracula" > "$tmpdir/.tint"
@@ -2584,17 +2588,28 @@ STUB
         _TINT_HOOK_COLOR=''
         export TINT_HOOK_VERBOSE=1
         cd '$tmpdir'
-        _tint_hook 2>&1
+        _tint_hook 2>'$tmpdir/stderr'
     " </dev/null
+    local stderr_content
+    stderr_content=$(cat "$tmpdir/stderr")
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"tint: dracula from "* ]]
-    [[ "$output" == *"/.tint"* ]]
+    # stdout must be empty — verbose messages belong on stderr.
+    [ -z "$output" ]
+    # stderr carries the verbose line.
+    [[ "$stderr_content" == *"tint: dracula from "* ]]
+    [[ "$stderr_content" == *"/.tint"* ]]
 }
 
 @test "hook propagates tint stderr on unknown theme name" {
     # Stub `tint` that exits non-zero with a stderr message — verifies the
     # hook no longer suppresses stderr from the inner tint invocation.
+    # Capture stdout and stderr separately to assert error went to stderr,
+    # not stdout (a stdout error would pollute prompts and break pipes).
+    # eval's auto-run (`_tint_hook` at end of hook script) walks up from
+    # $PWD looking for any .tint; under our stub-tint PATH, that incidental
+    # call would also write to stderr and pollute the assertion. Silence
+    # eval's stderr — it's setup noise, not the SUT.
     local tmpdir
     tmpdir=$(mktemp -d)
     echo "ghost-theme" > "$tmpdir/.tint"
@@ -2607,22 +2622,28 @@ STUB
     chmod +x "$tmpdir/bin/tint"
     run bash -c "
         export PATH=\"$tmpdir/bin:\$PATH\"
-        eval \"\$('$DIR/tint' hook bash)\" </dev/null
+        eval \"\$('$DIR/tint' hook bash)\" </dev/null 2>/dev/null
         _TINT_HOOK_PWD=''
         _TINT_HOOK_COLOR=''
         cd '$tmpdir'
-        _tint_hook 2>&1
+        _tint_hook 2>'$tmpdir/stderr'
     " </dev/null
+    local stderr_content
+    stderr_content=$(cat "$tmpdir/stderr")
     rm -rf "$tmpdir"
-    # Hook itself doesn't fail; tint's stderr is visible to the user.
-    [[ "$output" == *"unknown theme: ghost-theme"* ]]
+    # Hook itself doesn't fail; nothing on stdout.
+    [ -z "$output" ]
+    # tint's stderr surfaced to the user.
+    [[ "$stderr_content" == *"unknown theme: ghost-theme"* ]]
 }
 
 @test "hook does not abort shell under set -e when tint fails" {
     # Regression for the rewrite from `( ... ) || true` to `if ( ... )`.
     # Inner tint exits 1 (stub for unknown theme); the hook must not
     # propagate that failure to the surrounding shell. The "SURVIVED"
-    # echo proves the shell stayed alive past the hook call.
+    # echo proves the shell stayed alive past the hook call. Capture
+    # stdout (where SURVIVED goes) and stderr (where tint's error goes)
+    # separately so each assertion targets the correct channel.
     local tmpdir
     tmpdir=$(mktemp -d)
     echo "ghost-theme" > "$tmpdir/.tint"
@@ -2636,18 +2657,21 @@ STUB
     run bash -c "
         set -e
         export PATH=\"$tmpdir/bin:\$PATH\"
-        eval \"\$('$DIR/tint' hook bash)\" </dev/null
+        eval \"\$('$DIR/tint' hook bash)\" </dev/null 2>/dev/null
         _TINT_HOOK_PWD=''
         _TINT_HOOK_COLOR=''
         cd '$tmpdir'
-        _tint_hook
+        _tint_hook 2>'$tmpdir/stderr'
         echo 'SURVIVED'
-    " </dev/null 2>&1
+    " </dev/null
+    local stderr_content
+    stderr_content=$(cat "$tmpdir/stderr")
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
+    # stdout: surrounding shell survived past the hook.
     [[ "$output" == *"SURVIVED"* ]]
-    # And the stderr from the failing tint stub still surfaced.
-    [[ "$output" == *"unknown theme: ghost-theme"* ]]
+    # stderr: tint's error message surfaced.
+    [[ "$stderr_content" == *"unknown theme: ghost-theme"* ]]
 }
 
 @test "extra args still rejected for other commands" {

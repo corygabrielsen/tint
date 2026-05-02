@@ -1888,11 +1888,9 @@ _tint_hook() {
     # stderr passes through so errors (unknown theme, malformed .tint, etc.)
     # surface to the user — previously suppressed, which silently broke hooks.
     # TINT_HOOK_VERBOSE=1 opts into direnv-style "applied X from Y" messages.
-    # `if` form neutralizes errexit: bash skips `set -e` propagation for
-    # commands in tested conditions (`if`, `while`, `until`, `&&`, `||`).
-    # Subshell isolates against bash 3.2 (macOS) errexit-in-function quirks
-    # where `set -e` could leak across function boundaries; the subshell's
-    # exit code is what `if` tests.
+    # `if ( ... )` guard prevents a non-zero exit from `tint` from aborting
+    # the hook when the user's shell is running under `set -e` / errexit;
+    # the subshell additionally isolates any state changes.
     if ( command tint "$_tint_color" >/dev/null ); then
         if [ "${TINT_HOOK_VERBOSE:-0}" = "1" ]; then
             printf 'tint: %s from %s\n' "$_tint_color" "$_tint_file" >&2
