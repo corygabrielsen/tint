@@ -2541,6 +2541,97 @@ STUB
     [[ "$output" =~ "NO_CALL" ]]
 }
 
+# =============================================================================
+# Hook output policy: silent on success, errors visible, opt-in verbose
+# =============================================================================
+#
+# Class invariant: the hook is a high-frequency event (every prompt). Silence
+# on the success path keeps terminals clean (per AGENTS.md value-prop). Errors
+# must propagate to stderr so failures don't go unnoticed (previously the
+# hook suppressed all of tint's output, including stderr — silent failures).
+# TINT_HOOK_VERBOSE=1 opts into direnv-style "applied X from Y" messages for
+# debugging or curious users.
+
+@test "hook is silent on success by default" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "dracula" > "$tmpdir/.tint"
+    run bash -c "
+        eval \"\$('$DIR/tint' hook bash)\" </dev/null
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        cd '$tmpdir'
+        _tint_hook
+    " </dev/null
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    # No output at all on success — the visible bg change IS the signal.
+    [ -z "$output" ]
+}
+
+@test "hook prints to stderr when TINT_HOOK_VERBOSE=1" {
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "dracula" > "$tmpdir/.tint"
+    run bash -c "
+        eval \"\$('$DIR/tint' hook bash)\" </dev/null
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        export TINT_HOOK_VERBOSE=1
+        cd '$tmpdir'
+        _tint_hook 2>&1
+    " </dev/null
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "tint: dracula from " ]]
+    [[ "$output" =~ "/.tint" ]]
+}
+
+@test "hook propagates tint stderr on unknown theme name" {
+    # Stub `tint` that exits non-zero with a stderr message — verifies the
+    # hook no longer suppresses stderr from the inner tint invocation.
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "ghost-theme" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "tint: unknown theme: $*" >&2
+exit 1
+STUB
+    chmod +x "$tmpdir/bin/tint"
+    run bash -c "
+        export PATH=\"$tmpdir/bin:\$PATH\"
+        eval \"\$('$DIR/tint' hook bash)\" </dev/null
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        cd '$tmpdir'
+        _tint_hook 2>&1
+    " </dev/null
+    rm -rf "$tmpdir"
+    # Hook itself doesn't fail; tint's stderr is visible to the user.
+    [[ "$output" =~ "unknown theme: ghost-theme" ]]
+}
+
+@test "hook stays silent on success with TINT_HOOK_VERBOSE unset" {
+    # Default (unset env var) is silent — the bg change is the signal,
+    # the message would be redundant noise.
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    echo "dracula" > "$tmpdir/.tint"
+    run bash -c "
+        unset TINT_HOOK_VERBOSE
+        eval \"\$('$DIR/tint' hook bash)\" </dev/null
+        _TINT_HOOK_PWD=''
+        _TINT_HOOK_COLOR=''
+        cd '$tmpdir'
+        _tint_hook 2>&1
+    " </dev/null
+    rm -rf "$tmpdir"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
 @test "extra args still rejected for other commands" {
     run tint solarized-dark extra
     [ "$status" -eq 1 ]
