@@ -1553,13 +1553,14 @@ _repeat_keys() {
 
 # Helper: run tint_pick in a PTY with simulated keystrokes
 # Usage: _pick <key> [<key> ...]
-# Sets: PICK_EXIT (exit code), PICK_STDOUT (captured output)
+# Sets: PICK_EXIT, PICK_STDOUT, PICK_STTY_ECHO, PICK_ALT_SCREEN_EXITED
 _pick() {
     local result
     result=$(python3 "$DIR/test/pty_helper.py" "$@" 2>/dev/null)
     PICK_EXIT=$(echo "$result" | grep '^exit:' | cut -d: -f2)
     PICK_STDOUT=$(echo "$result" | grep '^stdout:' | cut -d: -f2-)
     PICK_STTY_ECHO=$(echo "$result" | grep '^stty_echo:' | cut -d: -f2)
+    PICK_ALT_SCREEN_EXITED=$(echo "$result" | grep '^alt_screen_exited:' | cut -d: -f2)
 }
 
 @test "picker: navigate down and select" {
@@ -1699,6 +1700,34 @@ _pick() {
     [[ "$output" == *"exit:0"* ]]
     # down + down = idx 2 (second theme)
     [[ "$output" == *"stdout:${THEME_SECOND}"* ]]
+}
+
+# Termination signals (INT/TERM) must run the full teardown chain — the
+# class-level invariant being: whenever the picker is interrupted, the user
+# must get back a normal shell. Specifically:
+#   - tint_pick returns the canonical signal exit code (130 / 143)
+#   - stty -echo is cleared (terminal echo restored)
+#   - the alt-screen buffer is exited (\e[?1049l emitted)
+# These tests catch any future change that breaks any of those steps —
+# e.g. a regression in the trap install dedupe (#97) or in
+# _tint_restore_terminal's ordering would surface here.
+
+@test "picker: SIGINT triggers full teardown and exits 130" {
+    command -v timeout >/dev/null || skip "timeout(1) not installed (brew install coreutils on macOS)"
+    run timeout 10 python3 "$DIR/test/pty_helper.py" down signal:int
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"exit:130"* ]]
+    [[ "$output" == *"stty_echo:on"* ]]
+    [[ "$output" == *"alt_screen_exited:yes"* ]]
+}
+
+@test "picker: SIGTERM triggers full teardown and exits 143" {
+    command -v timeout >/dev/null || skip "timeout(1) not installed (brew install coreutils on macOS)"
+    run timeout 10 python3 "$DIR/test/pty_helper.py" down signal:term
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"exit:143"* ]]
+    [[ "$output" == *"stty_echo:on"* ]]
+    [[ "$output" == *"alt_screen_exited:yes"* ]]
 }
 
 # =============================================================================

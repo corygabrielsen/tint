@@ -1315,11 +1315,21 @@ _tint_install_signal_traps() {
     # new stty -g can't restore wrong state.
     _TINT_PICKER_SAVED_STTY=""
     # Install traps before stty -echo so a signal in the gap can't leave
-    # the terminal with echo disabled.
-    trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal' EXIT
-    # 130 = 128+SIGINT, 143 = 128+SIGTERM (standard shell exit codes)
-    trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PICKER_INTERRUPTED=130' INT
-    trap '_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal; _TINT_PICKER_INTERRUPTED=143' TERM
+    # the terminal with echo disabled. Every interrupt path runs the
+    # same teardown prefix (mark interrupt + restore terminal); INT/TERM
+    # additionally record the signal-derived exit code (130 = 128+SIGINT,
+    # 143 = 128+SIGTERM). Factored into one local so the shared prefix
+    # has a single source of truth.
+    local on_interrupt='_TINT_PICKER_EXIT_REASON=interrupt; _tint_restore_terminal'
+    # The double-quoted form expands $on_interrupt now (at trap install)
+    # rather than when the signal fires — exactly what we want, since it
+    # bakes the shared prefix into each trap body as a literal string.
+    # shellcheck disable=SC2064
+    trap "$on_interrupt" EXIT
+    # shellcheck disable=SC2064
+    trap "$on_interrupt; _TINT_PICKER_INTERRUPTED=130" INT
+    # shellcheck disable=SC2064
+    trap "$on_interrupt; _TINT_PICKER_INTERRUPTED=143" TERM
     trap '_TINT_PICKER_RESIZED=1' WINCH
     _TINT_PICKER_TRAPS_INSTALLED=1
 }
