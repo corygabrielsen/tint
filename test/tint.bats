@@ -2553,19 +2553,24 @@ STUB
 # debugging or curious users.
 
 @test "hook is silent on success by default" {
+    # Capture both stdout and stderr (`2>&1`) — the contract is "no output
+    # on either channel by default", so asserting only stdout would let
+    # accidental stderr noise slip through. Explicitly `unset
+    # TINT_HOOK_VERBOSE` to defeat any env pollution from the parent shell.
     local tmpdir
     tmpdir=$(mktemp -d)
     echo "dracula" > "$tmpdir/.tint"
     run bash -c "
+        unset TINT_HOOK_VERBOSE
         eval \"\$('$DIR/tint' hook bash)\" </dev/null
         _TINT_HOOK_PWD=''
         _TINT_HOOK_COLOR=''
         cd '$tmpdir'
-        _tint_hook
+        _tint_hook 2>&1
     " </dev/null
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    # No output at all on success — the visible bg change IS the signal.
+    # No output on either channel — the visible bg change IS the signal.
     [ -z "$output" ]
 }
 
@@ -2613,23 +2618,36 @@ STUB
     [[ "$output" == *"unknown theme: ghost-theme"* ]]
 }
 
-@test "hook stays silent on success with TINT_HOOK_VERBOSE unset" {
-    # Default (unset env var) is silent — the bg change is the signal,
-    # the message would be redundant noise.
+@test "hook does not abort shell under set -e when tint fails" {
+    # Regression for the rewrite from `( ... ) || true` to `if ( ... )`.
+    # Inner tint exits 1 (stub for unknown theme); the hook must not
+    # propagate that failure to the surrounding shell. The "SURVIVED"
+    # echo proves the shell stayed alive past the hook call.
     local tmpdir
     tmpdir=$(mktemp -d)
-    echo "dracula" > "$tmpdir/.tint"
+    echo "ghost-theme" > "$tmpdir/.tint"
+    mkdir -p "$tmpdir/bin"
+    cat > "$tmpdir/bin/tint" <<'STUB'
+#!/bin/sh
+echo "tint: unknown theme: $*" >&2
+exit 1
+STUB
+    chmod +x "$tmpdir/bin/tint"
     run bash -c "
-        unset TINT_HOOK_VERBOSE
+        set -e
+        export PATH=\"$tmpdir/bin:\$PATH\"
         eval \"\$('$DIR/tint' hook bash)\" </dev/null
         _TINT_HOOK_PWD=''
         _TINT_HOOK_COLOR=''
         cd '$tmpdir'
-        _tint_hook 2>&1
-    " </dev/null
+        _tint_hook
+        echo 'SURVIVED'
+    " </dev/null 2>&1
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [ -z "$output" ]
+    [[ "$output" == *"SURVIVED"* ]]
+    # And the stderr from the failing tint stub still surfaced.
+    [[ "$output" == *"unknown theme: ghost-theme"* ]]
 }
 
 @test "extra args still rejected for other commands" {
