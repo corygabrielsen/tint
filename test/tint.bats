@@ -1713,7 +1713,7 @@ _pick() {
 # _tint_restore_terminal's ordering would surface here.
 
 @test "picker: SIGINT triggers full teardown and exits 130" {
-    command -v timeout >/dev/null || skip "timeout(1) not installed"
+    command -v timeout >/dev/null || skip "timeout(1) not installed (brew install coreutils on macOS)"
     run timeout 10 python3 "$DIR/test/pty_helper.py" down signal:int
     [ "$status" -eq 0 ]
     [[ "$output" == *"exit:130"* ]]
@@ -1722,7 +1722,7 @@ _pick() {
 }
 
 @test "picker: SIGTERM triggers full teardown and exits 143" {
-    command -v timeout >/dev/null || skip "timeout(1) not installed"
+    command -v timeout >/dev/null || skip "timeout(1) not installed (brew install coreutils on macOS)"
     run timeout 10 python3 "$DIR/test/pty_helper.py" down signal:term
     [ "$status" -eq 0 ]
     [[ "$output" == *"exit:143"* ]]
