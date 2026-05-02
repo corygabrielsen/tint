@@ -55,7 +55,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.21.0"
+TINT_VERSION="0.22.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -712,6 +712,15 @@ _tint_restore_terminal() {
     if [ -n "${_TINT_PICKER_SAVED_STTY:-}" ]; then
         stty "$_TINT_PICKER_SAVED_STTY" </dev/tty 2>/dev/null
     fi
+    # Exit the alternate screen buffer — terminal restores the contents
+    # that were on screen before the picker entered. OSC bg/fg/palette
+    # state set during the session persists; only the buffer view is
+    # swapped back. Order matters: do this before _tint_restore_original_colors
+    # so the user's original buffer is what receives the restored colors.
+    if [ "${_TINT_PICKER_ALT_SCREEN:-0}" -eq 1 ]; then
+        printf '\e[?1049l' >/dev/tty
+        _TINT_PICKER_ALT_SCREEN=0
+    fi
     if [ "$_TINT_PICKER_EXIT_REASON" != "confirm" ]; then
         _tint_restore_original_colors
     fi
@@ -1319,6 +1328,15 @@ _tint_install_signal_traps() {
 # Returns: non-zero if interrupted during setup
 _tint_setup_terminal() {
     if [ "$_TINT_PICKER_INTERRUPTED" -ne 0 ]; then _tint_restore_terminal; return "$_TINT_PICKER_INTERRUPTED"; fi
+    # Enter the alternate screen buffer. Treats the picker as a modal app:
+    # the prior screen contents are saved by the terminal and restored on
+    # exit (via \e[?1049l in _tint_restore_terminal). The picker can use
+    # the full terminal height regardless of where the user invoked it
+    # from, and quitting leaves no trace in the user's scrollback.
+    if [ "${_TINT_PICKER_ALT_SCREEN:-0}" -eq 0 ]; then
+        printf '\e[?1049h' >/dev/tty
+        _TINT_PICKER_ALT_SCREEN=1
+    fi
     # Non-canonical mode: -echo suppresses keystroke echo, -icanon disables
     # line buffering. Without -icanon, bash's read -n1 toggles canonical mode
     # per call, creating a window for escape sequence byte delays.

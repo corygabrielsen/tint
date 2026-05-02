@@ -199,7 +199,9 @@ def main():
         if cursor_pos >= 0:
             after_cursor = raw[cursor_pos + len(show_cursor):]
             after_cursor = re.sub(r"\x1b\][^\x1b\x07]*(?:\x07|\x1b\\)", "", after_cursor)
-            after_cursor = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", after_cursor)
+            # CSI matches both standard `\x1b[<params><final>` and DEC private
+            # mode `\x1b[?<params><final>` (e.g. `\x1b[?1049l` for alt-screen).
+            after_cursor = re.sub(r"\x1b\[\??[0-9;]*[A-Za-z]", "", after_cursor)
             # Strip EXIT trap output (STTY_ECHO:...) so it doesn't match
             after_cursor = re.sub(r"STTY_ECHO:\w+", "", after_cursor)
             # Match theme name.  Intentionally narrower than tint's palette
