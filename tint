@@ -580,6 +580,7 @@ _tint_fg_for_bg() {
 #   Resource flags                Type             Description     Set by
 #   ────────────────────────────  ───────────────  ──────────────  ───────────────────────────────────────────────────
 #   _TINT_PICKER_CURSOR_HIDDEN    bool             cursor hidden   install_signal_traps, hide_cursor, restore_terminal
+#   _TINT_PICKER_ALT_SCREEN       bool             alt-screen on   install_signal_traps, setup_terminal, restore_terminal
 #   _TINT_PICKER_TRAPS_INSTALLED  bool             traps set       install_signal_traps, restore_terminal
 #   _TINT_PICKER_SAVED_STTY       str              original stty   install_signal_traps, setup_terminal
 #   _TINT_PICKER_RENDERED_ROWS    int              rows on screen  init_picker, render_all, restore_terminal
@@ -1307,6 +1308,7 @@ _tint_install_signal_traps() {
     _TINT_PICKER_INTERRUPTED=0
     _TINT_PICKER_RESIZED=0
     _TINT_PICKER_CURSOR_HIDDEN=0
+    _TINT_PICKER_ALT_SCREEN=0
     _TINT_PICKER_EXIT_REASON=""
     _TINT_PICKER_KEY=""
     # Clear stale stty snapshot so a signal between trap install and the
@@ -1333,9 +1335,16 @@ _tint_setup_terminal() {
     # exit (via \e[?1049l in _tint_restore_terminal). The picker can use
     # the full terminal height regardless of where the user invoked it
     # from, and quitting leaves no trace in the user's scrollback.
+    #
+    # Set the flag *before* writing the escape: if a signal fires between
+    # the assignment and the printf, teardown will emit \e[?1049l on a
+    # buffer that never entered alt-screen — but \e[?1049l is a no-op when
+    # not in alt-screen, so the conservative pattern is harmless. The
+    # opposite order would lose the exit on interrupt, leaving the user
+    # stuck in the alt-screen buffer. Matches _tint_hide_cursor's pattern.
     if [ "${_TINT_PICKER_ALT_SCREEN:-0}" -eq 0 ]; then
-        printf '\e[?1049h' >/dev/tty
         _TINT_PICKER_ALT_SCREEN=1
+        printf '\e[?1049h' >/dev/tty
     fi
     # Non-canonical mode: -echo suppresses keystroke echo, -icanon disables
     # line buffering. Without -icanon, bash's read -n1 toggles canonical mode
