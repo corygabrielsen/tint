@@ -47,6 +47,11 @@ ESCAPE_DELAY = 0.05
 # must wake from read (up to _tint_read_timeout=0.5s), and a full redraw
 # must complete.
 RESIZE_DELAY = 0.3
+# Termination signals (INT/TERM) need time for: signal delivery, trap body
+# execution (_tint_restore_terminal touches /dev/tty for cursor/colors/stty),
+# loop check of _TINT_PICKER_INTERRUPTED, and bash function return. Picker
+# read timeout is 0.5s (the maximum block) plus margin for trap teardown.
+SIGNAL_DELAY = 0.8
 
 def set_pty_size(fd, rows, cols):
     """Set the PTY window size via ioctl(TIOCSWINSZ)."""
@@ -148,6 +153,15 @@ def main():
         # Small settle time for the full frame to flush
         time.sleep(0.03)
 
+        # Map of signal-name keys to actual signals. Used by the
+        # `signal:<name>` key form so bats tests can drive interrupt-path
+        # teardown (INT/TERM trap chain) without needing to fork their own
+        # signaling logic.
+        SIGNAL_KEYS = {
+            "signal:int": signal.SIGINT,
+            "signal:term": signal.SIGTERM,
+        }
+
         # Send keys
         for key_name in keys:
             if key_name.startswith("resize:"):
@@ -156,6 +170,13 @@ def main():
                 set_pty_size(master_fd, int(rows), int(cols))
                 os.kill(pid, signal.SIGWINCH)
                 time.sleep(RESIZE_DELAY)
+                continue
+            if key_name in SIGNAL_KEYS:
+                # Signal the child so the picker's INT/TERM trap fires.
+                # The trap body sets _TINT_PICKER_INTERRUPTED; the read
+                # loop notices on its next iteration and returns the code.
+                os.kill(pid, SIGNAL_KEYS[key_name])
+                time.sleep(SIGNAL_DELAY)
                 continue
             seq = translate_key(key_name)
             os.write(master_fd, seq.encode())
@@ -218,9 +239,17 @@ def main():
         stty_match = re.search(r"STTY_ECHO:(on|off)", raw)
         stty_echo = stty_match.group(1) if stty_match else "unknown"
 
+        # Did _tint_restore_terminal emit \e[?1049l? Lets tests prove the
+        # picker actually reached the alt-screen-exit step of teardown
+        # (vs. exiting earlier — e.g. via a stale trap that bypassed
+        # _tint_restore_terminal). Search the raw PTY stream rather than
+        # the post-strip text since the regex above removes it.
+        alt_screen_exited = "yes" if "\x1b[?1049l" in raw else "no"
+
         print(f"exit:{exit_code}")
         print(f"stdout:{stdout_result}")
         print(f"stty_echo:{stty_echo}")
+        print(f"alt_screen_exited:{alt_screen_exited}")
 
 
 if __name__ == "__main__":
