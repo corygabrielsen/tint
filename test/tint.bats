@@ -340,11 +340,7 @@ INNEREOF
 }
 
 @test "tint reset echoes 'reset'" {
-    # Verify the CLI prints the canonical reset name on stdout.
-    # Symmetric with `tint <theme>` which echoes the theme name —
-    # makes `tint reset > some/.tint` round-trip cleanly. (OSC
-    # sequences go to /dev/tty and are tested separately in the
-    # "type tint_reset" test.)
+    # OSC sequences go to /dev/tty; tested separately in "type tint_reset".
     source "$DIR/tint"
     run bash -c "
         source '$DIR/tint'
