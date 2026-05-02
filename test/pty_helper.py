@@ -5,11 +5,18 @@ feeds keystrokes, and captures output + exit code.
 
 Usage: python3 test/pty_helper.py <key> [<key> ...]
 
-Keys: right, left, up, down, enter, escape, q, h, j, k, l (or any single char)
+Keys: right, left, up, down, enter, escape, q, h, j, k, l, single char,
+      `resize:RxC` (set PTY size + send SIGWINCH),
+      `signal:int` / `signal:term` (send SIGINT / SIGTERM to the picker).
 
-Output:
-  exit:<code>
-  stdout:<captured output>
+Output (one key:value per line):
+  exit:<code>                          tint_pick's exit code
+  stdout:<theme-name>                  the theme tint_pick printed (or empty)
+  stty_echo:on|off                     terminal echo state at tint_pick exit
+  alt_screen_exited:yes|no             whether \\e[?1049l was emitted
+
+When adding new output keys: extend this block AND add the parse line in
+test/tint.bats's _pick helper.
 """
 
 import fcntl
@@ -44,14 +51,21 @@ KEY_DELAY = 0.02
 # and distinguish a bare Escape from the start of an arrow sequence.
 ESCAPE_DELAY = 0.05
 # Resize needs longer delay: SIGWINCH must be delivered, the picker loop
-# must wake from read (up to _tint_read_timeout=0.5s), and a full redraw
-# must complete.
+# must wake from its current read, and a full redraw must complete.
+# _tint_read_timeout is 0.5s on Bash >= 4 and 1s on Bash 3.2 (macOS), but
+# resize generally interrupts a read in flight rather than waiting for it
+# to time out, so 0.3s suffices in practice on both versions.
 RESIZE_DELAY = 0.3
-# Termination signals (INT/TERM) need time for: signal delivery, trap body
-# execution (_tint_restore_terminal touches /dev/tty for cursor/colors/stty),
-# loop check of _TINT_PICKER_INTERRUPTED, and bash function return. Picker
-# read timeout is 0.5s (the maximum block) plus margin for trap teardown.
-SIGNAL_DELAY = 0.8
+# Termination signals (INT/TERM) need to cover the worst-case path:
+#   1. signal delivery to the child
+#   2. trap body execution (_tint_restore_terminal touches /dev/tty for
+#      cursor/colors/stty/alt-screen)
+#   3. loop check of _TINT_PICKER_INTERRUPTED on the next read iteration
+#   4. bash function return
+# Step 3 is gated by _tint_read_timeout: 0.5s on Bash >= 4, 1s on Bash 3.2
+# (macOS). Sized to comfortably cover the slow case plus trap teardown
+# margin so the test is non-flaky on both.
+SIGNAL_DELAY = 1.5
 
 def set_pty_size(fd, rows, cols):
     """Set the PTY window size via ioctl(TIOCSWINSZ)."""
@@ -199,11 +213,12 @@ def main():
         output = b"".join(output_chunks)
         os.close(master_fd)
 
-        # The output contains both /dev/tty rendering (escape codes, etc.)
-        # and stdout from tint_pick (the hex color). Since both stdio and tty
-        # go to the same PTY, we need to parse out the hex value.
-        # tint_pick prints the hex with printf '%s' (no newline) right before
-        # return 0. It will be after the final \n that the picker prints.
+        # The output contains both /dev/tty rendering (ANSI escape codes,
+        # OSC color queries, etc.) and stdout from tint_pick (the selected
+        # theme name). Since both stdio and tty go to the same PTY, we
+        # need to parse the theme name out by position.
+        # tint_pick prints the name with printf '%s' (no newline) right
+        # before return 0; it appears after the picker's final cursor-show.
         raw = output.decode("utf-8", errors="replace")
 
         # Extract the theme name from the raw output.
