@@ -2583,8 +2583,8 @@ STUB
     " </dev/null
     rm -rf "$tmpdir"
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "tint: dracula from " ]]
-    [[ "$output" =~ "/.tint" ]]
+    [[ "$output" == *"tint: dracula from "* ]]
+    [[ "$output" == *"/.tint"* ]]
 }
 
 @test "hook propagates tint stderr on unknown theme name" {
@@ -2610,7 +2610,7 @@ STUB
     " </dev/null
     rm -rf "$tmpdir"
     # Hook itself doesn't fail; tint's stderr is visible to the user.
-    [[ "$output" =~ "unknown theme: ghost-theme" ]]
+    [[ "$output" == *"unknown theme: ghost-theme"* ]]
 }
 
 @test "hook stays silent on success with TINT_HOOK_VERBOSE unset" {
