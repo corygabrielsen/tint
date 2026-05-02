@@ -5,9 +5,11 @@ Conventions for agents (and humans) contributing to this repo.
 ## Versioning
 
 Strict [semver](https://semver.org). The "public API" of `tint` is the
-CLI, the sourced public functions (e.g. `tint_pick`, `tint_get`), exit
-codes, output format, and `--help` text. Internal helpers prefixed with
-`_tint_` are private.
+CLI, the sourced public functions (`tint_pick`, `tint_lookup`,
+`tint_resolve`, `tint_list`, `tint_set`, `tint_reset`,
+`tint_supports_color`, `tint_reload_palette`), exit codes, output
+format, and `--help` text. Internal helpers prefixed with `_tint_` are
+private.
 
 Bump `TINT_VERSION` per the matrix below.
 
@@ -33,8 +35,11 @@ next real change.
   audit the entire class of issue across the touched files. Name the
   class in the reply.
 - PR title ≤ 42 chars (GitHub appends ` (#N)` on squash-merge; total
-  must fit in 50). Pre-commit hook enforces this.
-- Set label, assign `@me`, mark ready for review.
+  must fit in 50). Not enforced in this repo's `pre-commit-config`;
+  enforce at PR-creation time (e.g. read the title before running
+  `gh pr create`).
+- Set a label, assign yourself (`gh pr create --assignee @me`), mark
+  ready for review.
 
 ## Commits
 
