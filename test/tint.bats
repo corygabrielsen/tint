@@ -339,16 +339,19 @@ INNEREOF
     [[ "$result" == "#282a36:#f8f8f2:#262626:"* ]]
 }
 
-@test "tint reset resets to default" {
-    # Verify the CLI prints the expected message (OSC sequences go to
-    # /dev/tty and are tested separately in "type tint_reset" test)
+@test "tint reset echoes 'reset'" {
+    # Verify the CLI prints the canonical reset name on stdout.
+    # Symmetric with `tint <theme>` which echoes the theme name —
+    # makes `tint reset > some/.tint` round-trip cleanly. (OSC
+    # sequences go to /dev/tty and are tested separately in the
+    # "type tint_reset" test.)
     source "$DIR/tint"
     run bash -c "
         source '$DIR/tint'
         tint reset
     "
     [ "$status" -eq 0 ]
-    [[ "$output" =~ "Reset to terminal default" ]]
+    [ "$output" = "reset" ]
 }
 
 @test "tint_resolve handles reset" {
