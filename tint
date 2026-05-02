@@ -55,7 +55,7 @@
 #
 # =============================================================================
 
-TINT_VERSION="0.23.0"
+TINT_VERSION="0.24.0"
 
 # Escape character for POSIX compatibility
 _TINT_ESC=$(printf '\033')
@@ -2017,7 +2017,8 @@ _tint_main() {
             ;;
         reset)
             tint_reset
-            echo "Reset to terminal default"
+            # Symmetric with the apply-by-name and apply-by-hex paths.
+            echo "reset"
             ;;
         *)
             # shellcheck disable=SC3043
