@@ -4,7 +4,7 @@ documentation:
 
 github actions:
   - changed-files:
-      - any-glob-to-any-file: [".github/workflows/**"]
+      - any-glob-to-any-file: [".github/workflows/**", ".github/labeler.yml"]
 
 tests:
   - changed-files:
@@ -12,7 +12,7 @@ tests:
 
 shell:
   - changed-files:
-      - any-glob-to-any-file: ["**/*.sh"]
+      - any-glob-to-any-file: ["**/*.sh", "tint"]
 
 python:
   - changed-files:
