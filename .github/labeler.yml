@@ -1,41 +1,18 @@
 documentation:
   - changed-files:
-      - any-glob-to-any-file: ["docs/**", "**/*.md"]
+      - any-glob-to-any-file: ["**/*.md"]
 
 github actions:
   - changed-files:
-      - any-glob-to-any-file: [".github/workflows/**", ".github/actions/**"]
-
-dependencies:
-  - changed-files:
-      - any-glob-to-any-file:
-          [
-            "Cargo.lock",
-            "package-lock.json",
-            "pnpm-lock.yaml",
-            "yarn.lock",
-            "go.sum",
-            "Pipfile.lock",
-            "requirements*.txt",
-            "uv.lock",
-            "poetry.lock",
-          ]
+      - any-glob-to-any-file: [".github/workflows/**"]
 
 tests:
   - changed-files:
-      - any-glob-to-any-file:
-          [
-            "**/test/**",
-            "**/tests/**",
-            "**/__tests__/**",
-            "**/*.test.*",
-            "**/*_test.*",
-            "**/*.bats",
-          ]
+      - any-glob-to-any-file: ["**/test/**"]
 
 shell:
   - changed-files:
-      - any-glob-to-any-file: ["**/*.sh", "**/*.bash"]
+      - any-glob-to-any-file: ["**/*.sh"]
 
 python:
   - changed-files:
