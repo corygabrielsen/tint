@@ -1,6 +1,4 @@
-# AGENTS.md
-
-Conventions for agents (and humans) contributing to this repo.
+@README.md @CONTRIBUTING.md
 
 ## Versioning
 
@@ -27,25 +25,12 @@ A bump is what cuts a release. Unbumped PRs roll into the next
 versioned PR. Don't bump just to "ship a refactor" — wait for the
 next real change.
 
-## Pull requests
+## Opening a PR
 
-- One focused change per PR. Defer noticed-but-unflagged cleanups to
-  follow-up PRs rather than folding them in.
-- When addressing a review comment, fix the flagged instance **and**
-  audit the entire class of issue across the touched files. Name the
-  class in the reply.
-- PR title ≤ 42 chars (GitHub appends ` (#N)` on squash-merge; total
-  must fit in 50). Not enforced in this repo's `pre-commit-config`;
-  enforce at PR-creation time (e.g. read the title before running
-  `gh pr create`).
-- Set a label, assign yourself (`gh pr create --assignee @me`), mark
-  ready for review.
-
-## Commits
-
-- Subject ≤ 50 chars, body wrapped at 72 (pre-commit hook enforces).
-- Imperative mood ("Add X", not "Added X").
-- Don't skip hooks (`--no-verify`).
+```bash
+git push -u origin <branch-name>
+gh pr create --title "<subject>" --assignee "@me" --label "<label>"
+```
 
 ## Tags
 
