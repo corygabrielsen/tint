@@ -1,0 +1,19 @@
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.md"]
+
+github actions:
+  - changed-files:
+      - any-glob-to-any-file: [".github/workflows/**", ".github/labeler.yml"]
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ["**/test/**"]
+
+shell:
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.sh", "tint"]
+
+python:
+  - changed-files:
+      - any-glob-to-any-file: ["**/*.py"]
