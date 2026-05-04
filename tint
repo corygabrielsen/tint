@@ -21,7 +21,9 @@
 #   (Austin Group defect #767 - 'local' is planned for next POSIX revision)
 #
 # Install:
-#   curl -fsSL https://raw.githubusercontent.com/corygabrielsen/tint/master/install.sh | bash
+#   brew install corygabrielsen/tint/tint
+#   curl -fsSL https://github.com/corygabrielsen/tint/releases/latest/download/tint \
+#     -o ~/.local/bin/tint && chmod +x ~/.local/bin/tint
 #
 # Usage:
 #   tint                      Interactive picker with live preview
