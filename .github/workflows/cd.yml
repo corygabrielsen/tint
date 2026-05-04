@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   run-tests:
-    name: Run Tests
+    name: Run Unit Tests
     uses: ./.github/workflows/ci.yml
 
   publish-release:

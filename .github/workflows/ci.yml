@@ -1,4 +1,4 @@
-name: Continuous Integration
+name: "CI: Unit Tests"
 
 on:
   workflow_call:
@@ -7,7 +7,7 @@ on:
 
 jobs:
   run-tests:
-    name: Run Tests
+    name: Run Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
