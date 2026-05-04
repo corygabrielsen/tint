@@ -4,15 +4,13 @@
 [![Latest Release](https://img.shields.io/github/v/release/corygabrielsen/tint)](https://github.com/corygabrielsen/tint/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Terminal theme switcher with live preview. Each theme sets background, foreground, and all 16 ANSI colors. Drop `.tint` files into project directories and your theme changes automatically as you navigate.
+![tint demo](https://raw.githubusercontent.com/corygabrielsen/tint-website/3033ec2b59c4896b390d22fb32cc70807cbaae88/public/demo.gif)
 
-```
-  ↑/↓ Navigate   Enter: Select   Esc: Cancel
-*  1.  (unchanged)
->  2.  dracula
-   3.  gruvbox
-   ↓ 16 more
-```
+`tint` is a terminal theme switcher with live preview, directory-based switching, and custom theme support.
+
+Each theme sets background, foreground, and all 16 ANSI colors.
+
+Drop `.tint` files into project directories and your theme changes automatically as you navigate.
 
 ## Install
 

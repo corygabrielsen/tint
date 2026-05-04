@@ -25,6 +25,20 @@ A bump is what cuts a release. Unbumped PRs roll into the next
 versioned PR. Don't bump just to "ship a refactor" — wait for the
 next real change.
 
+## Documentation media
+
+Keep large demo assets out of this repository. Store generated marketing
+media in `corygabrielsen/tint-website` so the `tint` repository stays small
+for shell-tool users and source installs.
+
+When versioned docs in this repository reference demo media, use an immutable
+`raw.githubusercontent.com` URL pinned to the exact `tint-website` commit that
+contains the asset. Do not use a moving GitHub Pages URL in `README.md` or
+other docs that render from historical commits or release tags.
+
+This intentionally accepts a dependency on the public `tint-website`
+supporting repository instead of vendoring large binary assets here.
+
 ## Opening a PR
 
 ```bash
